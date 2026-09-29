@@ -68,7 +68,9 @@ A completion:
 | `calls` | `[{"id": ..., "name": ..., "arguments": ...}]` in index order; `arguments` is the raw string. Default `[]`. |
 | `usage` | `{"input": n, "output": n}` plus `total` and `reasoning` when the server reported them. Default `null`. |
 
-Fields are compared exactly after defaults are filled in.
+Fields are compared exactly after defaults are filled in. This notation is the serde form of
+svir's `Completion`, and error kinds are the serde form of `ErrorKind`; `tests/serde_contract.rs`
+keeps them equal.
 
 An error:
 

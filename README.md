@@ -31,13 +31,18 @@ mlx-lm, llama.cpp, vLLM, and hosted endpoints.
 - **Compatibility**: a server that rejects optional fields such as `reasoning_effort` is detected
   once and remembered.
 
-Not covered, on purpose: an agent loop, session history, storage, retry scheduling, and MCP. Those
-belong to the application; svir gives it the pieces to build them.
+On top of that core, opt-in:
+
+- **Layers**: middleware around every call, with `Retry`, `Timeout`, and `Trace` built in.
+- **Tools**: a router of tool handlers, and `#[tool]` to define one from a function.
+
+Not covered, on purpose: an agent loop, session history, storage, and MCP. Those belong to the
+application; svir gives it the pieces to build them.
 
 ## Principles
 
-- **Protocol, not framework.** svir fits under a chat backend and under an agent engine without
-  either bending around it.
+- **Protocol at the core, building blocks on top.** svir fits under a chat backend and under an
+  agent engine without either bending around it; layers and tools are opt-in.
 - **Nothing is lost silently.** Tool-call IDs, reasoning, and provider continuation data survive
   a round trip. A feature an adapter cannot represent is an explicit error, not a dropped field.
 - **Wire types stay in adapters.** Shared types describe what the caller needs, not the union of

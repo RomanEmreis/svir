@@ -8,8 +8,9 @@ Status: design. Nothing here is implemented yet. Decisions referenced as `D<n>`,
 
 svir is the wire protocol between an application and a language model server, packaged as a Rust
 library: request and response types, an encoder, a decoder, a transport, and compatibility
-handling. It is not an agent framework (D1). It does not run a tool loop (D6), keep a session
-history, store anything, or speak MCP (D7).
+handling. On top of that core sit opt-in building blocks: layers and a tool router (D1). It is not
+an agent framework: it does not run a tool loop (D6), keep a session history, store anything, or
+speak MCP (D7).
 
 The first protocol is OpenAI-compatible Chat Completions streaming (D9), as served by LM Studio,
 mlx-lm, llama.cpp, vLLM, and hosted endpoints.
@@ -44,32 +45,54 @@ In svir:
   mid-stream errors, and limits.
 - **Transport**: the HTTP request, authentication, status mapping, timeouts, and cancellation.
 - **Compatibility**: learning what a particular server accepts, once per server (D11).
+- **Client**: one type over every wire API, with requests, messages, and streams (D13).
+
+Opt-in, on top of the core:
+
+- **Layers**: middleware around the provider-neutral call, including `Retry`, `Timeout`, and
+  `Trace` (D15, D16).
+- **Tools**: a router of tool descriptors and handlers, and `#[tool]` (D18).
 
 Not in svir, and owned by the consumer:
 
-- agent loop, effect journal, replay, budgets, context compaction, workspace tools;
+- the agent loop that feeds tool results back, effect journal, replay, budgets, context
+  compaction, workspace tools (D6);
 - MCP client and its policy (allow lists, configuration) (D7);
 - conversation storage, a registry of running generations, attachment storage, authentication
   of end users;
-- retry scheduling for generation requests (P3).
+- retry policy beyond the opt-in `Retry` layer (D16).
 
 ## 4. Components
 
 ### 4.1 Types
 
 Provider-neutral types describe what a caller needs, not the union of every server's JSON. Wire
-types stay private to the adapter that speaks them.
+types stay private to the adapter that speaks them. They are in `src/`; this is the summary.
+Every public type is `#[non_exhaustive]` and serializable (D22), built with constructors and
+builder methods, with public fields for reading.
 
-- A **message** has a role and content parts: text, image, text file, tool calls (assistant),
-  and a tool result (tool role). Attachments are held by reference (a path and a recorded size)
-  or in memory.
+- A **request** has a model, an optional system prompt, messages, tools, and parameters. The
+  system prompt is a field, not a message: each adapter puts it where its API expects it.
+- A **message** has a role (`User`, `Assistant`, `Tool`; no system role) and parts in order:
+  text, image, text file, reasoning and tool calls (assistant), and a tool result (tool role).
+  Which parts a role may carry is checked when the request is encoded. A `Completion` converts
+  into an assistant message with its reasoning, text, and calls.
+- An **attachment** (`Image`, `TextFile`) has a `Source`: a path, read while the body streams
+  with its size measured when the body is built, or bytes in memory (serialized as base64).
+- **Effort** is the requested reasoning effort (`Off` to `XHigh`); each adapter maps it to its
+  API (D13).
 - A **tool descriptor** is a name, a description, and a JSON Schema for the input.
 - A **tool call** is a provider call ID, a name, and the arguments as the raw string received.
-- **Usage** is input and output tokens, optional reasoning and total tokens, and a flag telling
-  provider-reported numbers from host estimates.
+- **Usage** is input and output tokens, and total and reasoning tokens when the server reports
+  them. svir reports only what the server said; estimates are the caller's.
+- **Timing** is when the first and last visible tokens arrived, from the start of the response;
+  `Completion::tokens_per_second` applies the rule of P7.
 - **Finish reason** is `stop`, `tool_calls`, or `length`. Anything else is an error in strict mode.
-- **Continuation** is provider-specific data (today: reasoning strings) that must be sent back
-  unchanged on the next request. It is opaque to the caller.
+- **Reasoning** carries its source (`reasoning_content`, `reasoning`, or `think`), which is all
+  Chat Completions needs to send it back. Opaque continuation data, such as signed thinking
+  blocks, arrives with the first wire API that needs it (O6).
+- **Decoding options**: `Mode` (`Strict` by default), `Limits`, and `Think` (`Split` or `Keep`;
+  its default is O2).
 
 ### 4.2 Encoder
 
@@ -108,13 +131,13 @@ The decoder is push-based and does no I/O: bytes go in, events come out. That le
 stream that is being forwarded elsewhere unchanged (a proxy that relays bytes to a browser and
 decodes them on the way past), as well as a stream it owns.
 
-Output is a `Stream` of `Result<Event, Error>` (D4). Illustrative only; names are not final:
+Output is a `Stream` of `Result<Event, Error>` (D4). The types are in `src/response.rs`:
 
 ```rust
 enum Event {
     Text(String),
-    Reasoning { source: ReasoningSource, text: String },
-    ToolCallDelta { index: usize, id: Option<String>, name: Option<String>, arguments: String },
+    Reasoning(Reasoning),   // { source: ReasoningSource, text: String }
+    ToolCallDelta(ToolCallDelta), // { index, id: Option<String>, name: Option<String>, arguments }
     Completed(Completion),
 }
 
@@ -123,8 +146,8 @@ struct Completion {
     text: String,
     reasoning: Vec<Reasoning>,
     calls: Vec<ToolCall>,
-    continuation: Option<Continuation>,
     usage: Option<Usage>,
+    timing: Option<Timing>,
 }
 ```
 
@@ -195,13 +218,18 @@ length is measured in bytes on character boundaries, so multi-byte text is never
 
 ### 4.6 Transport
 
-Behind a feature, so the codec can be used with any HTTP client (P2). It posts the encoded body,
-adds `Authorization: Bearer` when a key is configured, maps HTTP status codes to error kinds, and
-requires a `text/event-stream` response before decoding.
+Behind the `client` feature, so the codec can be used with any HTTP client (P2, D14). Each wire
+API has an adapter under the one `Client` type (D13). The adapter posts the encoded body, adds
+`Authorization: Bearer` when a key is configured (D17), maps HTTP status codes to error kinds, and
+requires a `text/event-stream` response before decoding. Layers wrap the adapter (D15).
 
 Proposed defaults (P4): no redirects, no automatic retries, no environment proxy discovery, a
-connect timeout of at most 10 seconds, and a request timeout covering headers and body. Plain HTTP
-only on loopback unless explicitly allowed. A caller can supply its own client.
+connect timeout of at most 10 seconds, and an idle read timeout. First-token and total limits are
+`Timeout` layers, so a long generation is not cut off by a request-wide default. Plain HTTP only
+on loopback unless explicitly allowed. A caller can supply its own client.
+
+`client.send(request)` returns the server's bytes unchanged, after status mapping and
+compatibility handling, for a proxy that relays them and decodes them on the way past (D20).
 
 The base URL is accepted with or without `/v1` and trailing slashes; one with credentials, a query,
 or a fragment is refused. Model listing returns what `GET /v1/models` reports, `id` and optional
@@ -236,23 +264,153 @@ Every failure is a typed kind with a `retryable` flag and an optional retry dela
 | `Unsupported` | no | A feature the adapter cannot represent; a success that is not `text/event-stream`; any other status, redirects included |
 | `ResponseLimit` | no | A byte, event, or tool-call limit was reached |
 | `Attachment` | no | An attachment could not be read or changed size since it was recorded (P13) |
+| `Config` | no | The client configuration is invalid: the URL (P4) or the source of the API key (D17) |
 
-`Retry-After` in seconds is honored and capped at 30 seconds. svir classifies; the caller decides
-whether and when to retry (P3). Error values never contain credentials, and by default never
-contain request URLs, headers, or raw server bodies. How a chat UI still gets the server's own
-message is open (O4).
+`Retry-After` in seconds is honored and capped at 30 seconds. svir classifies; retrying is the
+caller's decision, or the opt-in `Retry` layer's (D16). Error values never contain credentials,
+request URLs, or headers. The server's own message is available through
+`error.server_message()`, cut to 4 KiB, and kept out of `Debug` and `Display` (D19). Everything
+else a caller or a layer needs is on the error: `kind()`, `is_retryable()`, `retry_after()`,
+`detail()`, and the chained `source()`.
 
-## 5. Security
+## 5. API and composition
 
-- Credentials are configured by the caller and sent only as the `Authorization` header. They never
-  appear in `Debug`, `Display`, errors, or events.
+The API is decided in D13-D19. This section shows it in use.
+
+### 5.1 Four levels
+
+Each level is needed less often than the one before and gives more control.
+
+**Talk to a model.**
+
+```rust
+use svir::prelude::*;
+
+let client = Client::openai("http://127.0.0.1:1234").build()?;
+let request = Request::new("qwen3-27b")
+    .system("Be precise.")
+    .reasoning(Effort::Low)
+    .user("Explain ownership in one paragraph.");
+
+let answer = client.complete(&request).await?;
+println!("{}", answer.text);
+
+let mut stream = client.stream(&request).await?;
+while let Some(event) = stream.next().await {
+    match event? {
+        Event::Text(delta) => print!("{delta}"),
+        Event::Reasoning(r) => eprint!("{}", r.text),
+        Event::Completed(done) => println!("\n{:?}", done.usage),
+        _ => {}
+    }
+}
+```
+
+**Attachments, tools, and composition.** The loop that feeds tool results back is caller code
+(D6):
+
+```rust
+#[tool(descr = "Look up a value")]
+async fn lookup(value: i64) -> String { (value * 2).to_string() }
+
+let llm = Client::openai("http://127.0.0.1:1234")
+    .api_key_env("LMSTUDIO_API_KEY")
+    .layer(Retry::connect(3))
+    .layer(Timeout::first_token(Duration::from_secs(120)))
+    .wrap(|req, next| async move {
+        let started = Instant::now();
+        let reply = next.run(req).await;
+        tracing::info!(elapsed = ?started.elapsed(), "upstream answered");
+        reply
+    })
+    .build()?;
+
+let tools = Tools::new().add(lookup);
+let msg = Message::user("What changed between these two?")
+    .with(Image::path("before.png"))
+    .with(Image::path("after.png"))
+    .with(TextFile::path("diff.patch"));
+
+let mut request = Request::new("qwen3-27b").tools(&tools).message(msg);
+loop {
+    let done = llm.complete(&request).await?;
+    if done.calls.is_empty() {
+        break println!("{}", done.text);
+    }
+    let results = tools.call_all(&done.calls).await;
+    request = request.assistant(done).tool_results(results);
+}
+```
+
+`reply` in the `wrap` closure arrives with the response headers, not the whole answer; a layer
+that needs the whole answer wraps the returned stream (D15).
+
+**A proxy or a custom transport.** Relay the server's bytes unchanged and decode them on the way
+past (D20):
+
+```rust
+let mut raw = client.send(&request).await?;
+let mut decoder = Decoder::lenient().think(Think::Split);
+while let Some(bytes) = raw.next().await {
+    let bytes = bytes?;
+    browser.send(bytes.clone()).await?;
+    for event in decoder.push(&bytes) {
+        store(event?);
+    }
+}
+decoder.finish()?; // TruncatedStream without [DONE]
+```
+
+**Types and the stream only.** An engine with its own provider interface, journal, and budgets
+wraps `EventStream` in its own trait: `next_event()` is `stream.next()`, and cancelling is dropping
+the stream, which closes the connection. It adds no `Retry` layer, since it accounts for retries
+itself (D16).
+
+### 5.2 Layers
+
+A layer wraps `Request -> Result<EventStream, Error>`, above the adapter, so it is independent of
+the wire API. The first layer added is the outermost. A layer can act on the call (retry, time to
+headers, logging) and on the returned stream (first-token and idle timeouts, usage metrics).
+
+| Layer | Behavior |
+| --- | --- |
+| `Retry::connect(n)` | Retries connection failures, where the request never reached the server |
+| `Retry::transient(n)` | Retries retryable kinds with backoff, honoring `Retry-After` |
+| `Timeout::first_token(d)` | Fails with `Timeout` if no text or reasoning arrives within `d` |
+| `Timeout::idle(d)` | Fails with `Timeout` if the stream is silent for `d` |
+| `Timeout::total(d)` | Fails with `Timeout` if the answer is not complete within `d` |
+| `Trace` | Spans and events through `tracing` (feature `tracing`) |
+
+No retry happens after an event has been delivered (D16).
+
+### 5.3 Tools
+
+`Tools::new().add(..)` registers tools explicitly (D18). `tools.call(&call)` validates the
+arguments against the tool's schema and runs its handler; a failure becomes a tool result for the
+model. `#[tool]` derives the descriptor and input schema from a function (features `macros` and
+`schemars`). `call.parse::<T>()` parses raw arguments for callers without a router.
+
+### 5.4 Crates and features
+
+`svir` plus `svir-macros` (D14). Without features: types and the codec. `client` (default):
+`Client`, `EventStream`, and the reqwest and tokio transport. `macros`, `schemars`, `tracing`, and
+`testing` (a `MockServer` and scripted event streams for the caller's own tests) are opt-in.
+
+## 6. Security
+
+- Credentials are configured by the caller (`api_key`, `api_key_env`, `api_key_file`), held as a
+  `Secret`, and sent only as a sensitive `Authorization` header. They never appear in `Debug`,
+  `Display`, errors, or events. svir never reads environment variables or `.env` files
+  implicitly (D17).
 - Plain HTTP to a non-loopback host is refused unless the caller opts in (P4).
-- Tool descriptions and tool arguments are data from the model. svir never executes anything.
+- Tool descriptions and tool arguments are data from the model. svir executes nothing on its own:
+  `Tools` runs only handlers the caller registered, with arguments validated against their schemas.
 
-## 6. Testing
+## 7. Testing
 
 The default test run needs no model, network, or credentials: recorded SSE fixtures, and a local
-loopback HTTP server for transport behavior. Tests against a live model are opt-in.
+loopback HTTP server for transport behavior. Tests against a live model are opt-in. The same
+scripted server is published as `svir::testing::MockServer` for callers' own tests (D14).
 
 The conformance suite comes before the code. It is data, independent of the API: see
 [tests/conformance](../tests/conformance/README.md). What is still to be written is listed in
