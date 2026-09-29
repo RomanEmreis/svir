@@ -1,0 +1,13 @@
+{
+  "description": "429 without Retry-After has no retry delay.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 429,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"error\":{\"code\":\"rate_limit\",\"message\":\"secret-server-detail\"}}"
+    }
+  ],
+  "calls": [{"expect": {"error": "rate_limited", "retryable": true, "retry_after_ms": null}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

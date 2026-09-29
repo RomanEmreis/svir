@@ -1,0 +1,6 @@
+{
+  "description": "The response is longer than the wire-byte limit.",
+  "file": "tools.sse",
+  "options": {"limits": {"wire_bytes": 512}},
+  "expect": {"strict": {"error": "response_limit"}, "lenient": "same"}
+}

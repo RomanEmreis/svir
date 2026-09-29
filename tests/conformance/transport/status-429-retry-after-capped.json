@@ -1,0 +1,13 @@
+{
+  "description": "Retry-After is capped at 30 seconds.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 429,
+      "headers": {"content-type": "application/json", "retry-after": "120"},
+      "body": "{\"error\":{\"code\":\"rate_limit\",\"message\":\"secret-server-detail\"}}"
+    }
+  ],
+  "calls": [{"expect": {"error": "rate_limited", "retryable": true, "retry_after_ms": 30000}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

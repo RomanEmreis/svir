@@ -1,0 +1,12 @@
+{
+  "description": "A two-byte UTF-8 character split across chunks at every stride.",
+  "file": "final.sse",
+  "replace": [["42", "caf\u00e9"]],
+  "strides": [1, 2, 3, 8192],
+  "expect": {
+    "strict": {
+      "completion": {"finish": "stop", "text": "caf\u00e9", "usage": {"input": 24, "output": 3, "total": 27}}
+    },
+    "lenient": "same"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "description": "A chunk with an empty choices array before the finish reason, as some gateways send first.",
+  "chunks": [
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[],\"prompt_filter_results\":[]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"ok\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+    "data: [DONE]\n\n"
+  ],
+  "strides": [1, 3, 8192],
+  "expect": {"strict": {"error": "protocol"}, "lenient": {"completion": {"finish": "stop", "text": "ok"}}}
+}

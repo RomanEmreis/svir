@@ -1,0 +1,6 @@
+{
+  "description": "A finish reason outside stop, tool_calls, and length.",
+  "file": "final.sse",
+  "replace": [["\"stop\"", "\"content_filter\""]],
+  "expect": {"strict": {"error": "unsupported"}, "lenient": {"open": "O12"}}
+}

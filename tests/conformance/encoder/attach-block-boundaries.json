@@ -1,0 +1,55 @@
+{
+  "description": "Images of 0 to 7 bytes: every size around the block size, with small blocks.",
+  "request": {
+    "model": "m",
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {"text": "sizes"},
+          {"image": "s0"},
+          {"image": "s1"},
+          {"image": "s2"},
+          {"image": "s3"},
+          {"image": "s4"},
+          {"image": "s5"},
+          {"image": "s6"},
+          {"image": "s7"}
+        ]
+      }
+    ]
+  },
+  "attachments": {
+    "s0": {"media_type": "image/png", "hex": ""},
+    "s1": {"media_type": "image/png", "hex": "00"},
+    "s2": {"media_type": "image/png", "hex": "0001"},
+    "s3": {"media_type": "image/png", "hex": "000102"},
+    "s4": {"media_type": "image/png", "hex": "00010203"},
+    "s5": {"media_type": "image/png", "hex": "0001020304"},
+    "s6": {"media_type": "image/png", "hex": "000102030405"},
+    "s7": {"media_type": "image/png", "hex": "00010203040506"}
+  },
+  "options": {"block_bytes": [3, 6]},
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {"type": "text", "text": "sizes"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,"}},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAE="}},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAEC"}},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAECAw=="}},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAECAwQ="}},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAECAwQF"}},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAECAwQFBg=="}}
+          ]
+        }
+      ]
+    }
+  }
+}

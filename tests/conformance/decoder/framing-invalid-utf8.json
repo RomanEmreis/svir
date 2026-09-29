@@ -1,0 +1,15 @@
+{
+  "description": "An invalid UTF-8 byte inside an event.",
+  "chunks": [
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"a",
+    {"hex": "ff"},
+    "\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+    "data: [DONE]\n\n"
+  ],
+  "strides": [1, 8192],
+  "expect": {
+    "strict": {"error": "protocol", "partial": {"text": ""}},
+    "lenient": {"completion": {"finish": "stop", "text": "a\ufffd"}}
+  }
+}

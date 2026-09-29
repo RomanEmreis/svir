@@ -1,0 +1,35 @@
+{
+  "description": "Tool descriptors become function tools; tool_choice is not implied.",
+  "request": {
+    "model": "m",
+    "tools": [
+      {
+        "name": "lookup",
+        "description": "Look up a value.",
+        "input_schema": {"type": "object", "properties": {"value": {"type": "integer"}}, "required": ["value"]}
+      }
+    ],
+    "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "lookup",
+            "description": "Look up a value.",
+            "parameters": {
+              "type": "object",
+              "properties": {"value": {"type": "integer"}},
+              "required": ["value"]
+            }
+          }
+        }
+      ],
+      "messages": [{"role": "user", "content": "hi"}]
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "description": "A stream that stops sending times out.",
+  "config": {"base_url": "{server}/v1", "timeout_ms": 500},
+  "server": [
+    {
+      "status": 200,
+      "headers": {"content-type": "text/event-stream"},
+      "body": "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"},\"finish_reason\":null}]}\n\n",
+      "then": "stall"
+    }
+  ],
+  "calls": [
+    {
+      "expect": {"error": "timeout", "retryable": true, "partial": {"text": "partial"}, "within_ms": 3000}
+    }
+  ],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

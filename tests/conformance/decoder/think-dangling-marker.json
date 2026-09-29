@@ -1,0 +1,11 @@
+{
+  "description": "A partial marker at the very end is text.",
+  "chunks": [
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"done<thi\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+    "data: [DONE]\n\n"
+  ],
+  "strides": [1, 3, 8192],
+  "options": {"think": "split"},
+  "expect": {"strict": {"completion": {"finish": "stop", "text": "done<thi"}}, "lenient": "same"}
+}

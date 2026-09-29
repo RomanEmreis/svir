@@ -1,0 +1,24 @@
+{
+  "description": "An error that is not a 400 or 422 is reported as-is, without a retry.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [{"status": 404, "headers": {"content-type": "text/plain"}, "body": "Model not loaded"}],
+  "calls": [
+    {
+      "request": {
+        "model": "m",
+        "reasoning_effort": "low",
+        "include_usage": true,
+        "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+      },
+      "expect": {"error": "unsupported", "retryable": false, "message": "Model not loaded"}
+    }
+  ],
+  "expect_requests": [
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "body_includes": {"reasoning_effort": "low", "stream_options": {"include_usage": true}}
+    }
+  ],
+  "open": ["O4"]
+}

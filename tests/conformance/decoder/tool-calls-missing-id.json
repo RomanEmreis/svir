@@ -1,0 +1,6 @@
+{
+  "description": "A call that never received an ID.",
+  "file": "tools.sse",
+  "replace": [["\"id\":\"call-b\",", ""]],
+  "expect": {"strict": {"error": "protocol"}, "lenient": "same"}
+}

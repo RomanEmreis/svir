@@ -1,0 +1,6 @@
+{
+  "description": "A call index at or over the tool-call limit.",
+  "file": "tools.sse",
+  "replace": [["\"index\":1", "\"index\":99999"]],
+  "expect": {"strict": {"error": "response_limit"}, "lenient": "same"}
+}

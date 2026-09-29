@@ -1,0 +1,6 @@
+{
+  "description": "Calls with a 'stop' finish reason.",
+  "file": "tools.sse",
+  "replace": [["\"finish_reason\":\"tool_calls\"", "\"finish_reason\":\"stop\""]],
+  "expect": {"strict": {"error": "protocol"}, "lenient": "same"}
+}

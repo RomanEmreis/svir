@@ -1,0 +1,21 @@
+{
+  "description": "The lean body omits the optional fields and nothing else.",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "temperature": 0.5,
+    "reasoning_effort": "low",
+    "include_usage": true,
+    "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+  },
+  "options": {"lean": true},
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "max_tokens": 16,
+      "temperature": 0.5,
+      "messages": [{"role": "user", "content": "hi"}]
+    }
+  }
+}

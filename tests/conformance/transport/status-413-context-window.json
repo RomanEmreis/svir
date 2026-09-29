@@ -1,0 +1,13 @@
+{
+  "description": "413 with context_window_exceeded is a context overflow.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 413,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"error\":{\"code\":\"context_window_exceeded\",\"message\":\"secret-server-detail\"}}"
+    }
+  ],
+  "calls": [{"expect": {"error": "context_overflow", "retryable": false}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

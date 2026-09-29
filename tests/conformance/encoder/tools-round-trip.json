@@ -1,0 +1,49 @@
+{
+  "description": "Assistant tool calls and tool results keep their call IDs.",
+  "request": {
+    "model": "m",
+    "messages": [
+      {"role": "user", "parts": [{"text": "Use lookup"}]},
+      {
+        "role": "assistant",
+        "parts": [
+          {"tool_call": {"id": "call-a", "name": "lookup", "arguments": "{\"value\":1}"}},
+          {"tool_call": {"id": "call-b", "name": "lookup", "arguments": "{\"value\":2}"}}
+        ]
+      },
+      {"role": "tool", "parts": [{"tool_result": {"call_id": "call-a", "content": "42"}}]},
+      {
+        "role": "tool",
+        "parts": [{"tool_result": {"call_id": "call-b", "content": "{\"found\":false}"}}]
+      }
+    ]
+  },
+  "open": ["O11"],
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "messages": [
+        {"role": "user", "content": "Use lookup"},
+        {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "id": "call-a",
+              "type": "function",
+              "function": {"name": "lookup", "arguments": "{\"value\":1}"}
+            },
+            {
+              "id": "call-b",
+              "type": "function",
+              "function": {"name": "lookup", "arguments": "{\"value\":2}"}
+            }
+          ]
+        },
+        {"role": "tool", "tool_call_id": "call-a", "content": "42"},
+        {"role": "tool", "tool_call_id": "call-b", "content": "{\"found\":false}"}
+      ]
+    }
+  }
+}

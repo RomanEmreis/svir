@@ -1,0 +1,27 @@
+{
+  "description": "Without a key there is no Authorization header; the body is sized, not chunked.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 200,
+      "headers": {"content-type": "text/event-stream"},
+      "body_file": "../decoder/final.sse"
+    }
+  ],
+  "calls": [
+    {
+      "expect": {
+        "completion": {"finish": "stop", "text": "42", "usage": {"input": 24, "output": 3, "total": 27}}
+      }
+    }
+  ],
+  "expect_requests": [
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "headers": {"content-type": "application/json"},
+      "absent_headers": ["authorization", "transfer-encoding"],
+      "body_includes": {"model": "m", "stream": true}
+    }
+  ]
+}

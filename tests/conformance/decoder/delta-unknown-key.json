@@ -1,0 +1,9 @@
+{
+  "description": "A delta key outside the supported subset.",
+  "file": "final.sse",
+  "replace": [["\"content\":\"42\"", "\"audio\":{}"]],
+  "expect": {
+    "strict": {"error": "unsupported", "partial": {"text": ""}},
+    "lenient": {"completion": {"finish": "stop", "usage": {"input": 24, "output": 3, "total": 27}}}
+  }
+}

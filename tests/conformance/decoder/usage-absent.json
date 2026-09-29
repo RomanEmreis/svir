@@ -1,0 +1,5 @@
+{
+  "description": "A server that sends no usage: the answer is still complete.",
+  "file": "final-no-usage.sse",
+  "expect": {"strict": {"completion": {"finish": "stop", "text": "42"}}, "lenient": "same"}
+}

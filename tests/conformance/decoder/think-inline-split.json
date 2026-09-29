@@ -1,0 +1,16 @@
+{
+  "description": "Inline <think> tags split out of the content.",
+  "chunks": [
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"<think>why</think>because\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+    "data: [DONE]\n\n"
+  ],
+  "strides": [1, 3, 8192],
+  "options": {"think": "split"},
+  "expect": {
+    "strict": {
+      "completion": {"finish": "stop", "text": "because", "reasoning": [{"source": "think", "text": "why"}]}
+    },
+    "lenient": "same"
+  }
+}

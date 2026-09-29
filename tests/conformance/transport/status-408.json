@@ -1,0 +1,13 @@
+{
+  "description": "408 is a timeout.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 408,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"error\":{\"code\":\"timeout\",\"message\":\"secret-server-detail\"}}"
+    }
+  ],
+  "calls": [{"expect": {"error": "timeout", "retryable": true}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

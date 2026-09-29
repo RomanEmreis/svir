@@ -1,0 +1,7 @@
+{
+  "description": "An image shorter than its recorded size fails instead of sending a wrong body.",
+  "request": {"model": "m", "messages": [{"role": "user", "parts": [{"image": "img"}]}]},
+  "attachments": {"img": {"media_type": "image/png", "hex": "000102", "declared_size": 4}},
+  "options": {"block_bytes": [3, 6]},
+  "expect": {"error": "attachment"}
+}

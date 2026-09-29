@@ -1,0 +1,6 @@
+{
+  "description": "A body that does not fit next to its output reservation is rejected before sending.",
+  "request": {"model": "m", "max_tokens": 16, "messages": [{"role": "user", "parts": [{"text": "hi"}]}]},
+  "options": {"context_tokens": 64},
+  "expect": {"error": "context_overflow"}
+}

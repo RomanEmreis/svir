@@ -1,0 +1,6 @@
+{
+  "description": "No room for output is an overflow.",
+  "request": {"model": "m", "max_tokens": 0, "messages": [{"role": "user", "parts": [{"text": "hi"}]}]},
+  "options": {"context_tokens": 100000},
+  "expect": {"error": "context_overflow"}
+}

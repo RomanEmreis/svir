@@ -1,0 +1,10 @@
+{
+  "description": "A plain text answer with a trailing usage chunk.",
+  "file": "final.sse",
+  "expect": {
+    "strict": {
+      "completion": {"finish": "stop", "text": "42", "usage": {"input": 24, "output": 3, "total": 27}}
+    },
+    "lenient": "same"
+  }
+}

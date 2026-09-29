@@ -1,0 +1,23 @@
+{
+  "description": "A text file whose multi-byte characters and escapes fall across block boundaries.",
+  "request": {"model": "m", "messages": [{"role": "user", "parts": [{"file": "wide"}]}]},
+  "attachments": {
+    "wide": {
+      "name": "wide.txt",
+      "text": "\u00e9\"\\\n\u00e9\"\\\n\u00e9\"\\\n\u00e9\"\\\n\u00e9\"\\\n\u00e9\"\\\n\u00e9\"\\\n\u20ac"
+    }
+  },
+  "options": {"block_bytes": [3, 6]},
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": "<file name=\"wide.txt\">\n\u00e9\"\\\n\u00e9\"\\\n\u00e9\"\\\n\u00e9\"\\\n\u00e9\"\\\n\u00e9\"\\\n\u00e9\"\\\n\u20ac\n</file>"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "description": "Redirects are not followed.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [{"status": 307, "headers": {"location": "{server}/elsewhere"}}],
+  "calls": [{"expect": {"error": "unsupported", "retryable": false}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

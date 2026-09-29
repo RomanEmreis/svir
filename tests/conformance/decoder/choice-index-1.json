@@ -1,0 +1,11 @@
+{
+  "description": "The only choice has index 1.",
+  "file": "final.sse",
+  "replace": [["\"index\":0", "\"index\":1"]],
+  "expect": {
+    "strict": {"error": "unsupported"},
+    "lenient": {
+      "completion": {"finish": "stop", "text": "42", "usage": {"input": 24, "output": 3, "total": 27}}
+    }
+  }
+}

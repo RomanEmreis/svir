@@ -1,0 +1,15 @@
+{
+  "description": "Cancelling a read that is waiting closes the connection.",
+  "config": {"base_url": "{server}/v1", "timeout_ms": 10000},
+  "server": [
+    {
+      "status": 200,
+      "headers": {"content-type": "text/event-stream"},
+      "body": "",
+      "then": "stall"
+    }
+  ],
+  "calls": [{"client": [{"read_for_ms": 50}, "cancel"], "expect": {"cancelled": true}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}],
+  "expect_closed": true
+}

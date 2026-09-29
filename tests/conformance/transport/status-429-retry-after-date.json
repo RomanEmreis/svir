@@ -1,0 +1,13 @@
+{
+  "description": "Retry-After as an HTTP date.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 429,
+      "headers": {"content-type": "application/json", "retry-after": "Wed, 21 Oct 2037 07:28:00 GMT"},
+      "body": "{\"error\":{\"code\":\"rate_limit\",\"message\":\"secret-server-detail\"}}"
+    }
+  ],
+  "calls": [{"expect": {"open": "O7"}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

@@ -1,0 +1,9 @@
+{
+  "description": "The stream ends before the finish reason.",
+  "file": "tools.sse",
+  "cut_before": "\"finish_reason\":\"tool_calls\"",
+  "expect": {
+    "strict": {"error": "truncated_stream", "partial": {"text": "", "reasoning": "opaque reasoning"}},
+    "lenient": "same"
+  }
+}

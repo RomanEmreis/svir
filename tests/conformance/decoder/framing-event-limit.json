@@ -1,0 +1,6 @@
+{
+  "description": "One event is longer than the event-byte limit.",
+  "file": "tools.sse",
+  "options": {"limits": {"event_bytes": 256}},
+  "expect": {"strict": {"error": "response_limit"}, "lenient": "same"}
+}

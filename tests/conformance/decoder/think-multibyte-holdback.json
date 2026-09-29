@@ -1,0 +1,21 @@
+{
+  "description": "Holding back a possible marker never splits a character.",
+  "chunks": [
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"caf\u00e9<\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"think>\u00e9t\u00e9</think>!\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+    "data: [DONE]\n\n"
+  ],
+  "strides": [1, 2, 3, 8192],
+  "options": {"think": "split"},
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "stop",
+        "text": "caf\u00e9!",
+        "reasoning": [{"source": "think", "text": "\u00e9t\u00e9"}]
+      }
+    },
+    "lenient": "same"
+  }
+}

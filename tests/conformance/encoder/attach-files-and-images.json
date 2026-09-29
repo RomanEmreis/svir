@@ -1,0 +1,37 @@
+{
+  "description": "Files and text share one text part, in the order given; images follow.",
+  "request": {
+    "model": "m",
+    "messages": [
+      {
+        "role": "user",
+        "parts": [{"file": "a"}, {"file": "b"}, {"text": "Compare."}, {"image": "x"}, {"image": "y"}]
+      }
+    ]
+  },
+  "attachments": {
+    "a": {"name": "a.txt", "text": "A"},
+    "b": {"name": "b.txt", "text": "B"},
+    "x": {"media_type": "image/png", "hex": "01"},
+    "y": {"media_type": "image/jpeg", "hex": "0203"}
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "<file name=\"a.txt\">\nA\n</file>\n\n<file name=\"b.txt\">\nB\n</file>\n\nCompare."
+            },
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AQ=="}},
+            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,AgM="}}
+          ]
+        }
+      ]
+    }
+  }
+}

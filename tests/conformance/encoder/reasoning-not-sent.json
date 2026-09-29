@@ -1,0 +1,26 @@
+{
+  "description": "Reasoning is left out unless the request asks to send it back.",
+  "request": {
+    "model": "m",
+    "messages": [
+      {"role": "user", "parts": [{"text": "hi"}]},
+      {
+        "role": "assistant",
+        "parts": [{"reasoning": {"source": "reasoning_content", "text": "thought"}}, {"text": "42"}]
+      },
+      {"role": "user", "parts": [{"text": "and?"}]}
+    ]
+  },
+  "options": {"send_reasoning": false},
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "messages": [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "42"},
+        {"role": "user", "content": "and?"}
+      ]
+    }
+  }
+}

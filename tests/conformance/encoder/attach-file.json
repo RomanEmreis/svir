@@ -1,0 +1,20 @@
+{
+  "description": "A text file goes inside the message as text, named and escaped.",
+  "request": {
+    "model": "m",
+    "messages": [{"role": "user", "parts": [{"file": "notes"}, {"text": "Summarize."}]}]
+  },
+  "attachments": {"notes": {"name": "notes.txt", "text": "say \"hi\"\tC:\\temp\n\u0001caf\u00e9"}},
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": "<file name=\"notes.txt\">\nsay \"hi\"\tC:\\temp\n\u0001caf\u00e9\n</file>\n\nSummarize."
+        }
+      ]
+    }
+  }
+}

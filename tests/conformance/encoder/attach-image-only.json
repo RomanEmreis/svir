@@ -1,0 +1,17 @@
+{
+  "description": "An image on its own carries no empty text part.",
+  "request": {"model": "m", "messages": [{"role": "user", "parts": [{"image": "pixel"}]}]},
+  "attachments": {"pixel": {"media_type": "image/png", "hex": "89504e470d0a1a0a"}},
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}}]
+        }
+      ]
+    }
+  }
+}

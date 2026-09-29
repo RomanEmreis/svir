@@ -1,0 +1,6 @@
+{
+  "description": "A text file that changed size since it was recorded fails.",
+  "request": {"model": "m", "messages": [{"role": "user", "parts": [{"file": "notes"}]}]},
+  "attachments": {"notes": {"name": "notes.txt", "text": "abc", "declared_size": 5}},
+  "expect": {"error": "attachment"}
+}

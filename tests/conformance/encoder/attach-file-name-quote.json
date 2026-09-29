@@ -1,0 +1,12 @@
+{
+  "description": "A double quote in a file name is written as &quot;.",
+  "request": {"model": "m", "messages": [{"role": "user", "parts": [{"file": "notes"}]}]},
+  "attachments": {"notes": {"name": "my \"notes\".txt", "text": "x"}},
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "messages": [{"role": "user", "content": "<file name=\"my &quot;notes&quot;.txt\">\nx\n</file>"}]
+    }
+  }
+}

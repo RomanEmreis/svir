@@ -1,0 +1,19 @@
+{
+  "description": "A 'length' finish reason may cut off an answer with calls.",
+  "file": "tools.sse",
+  "replace": [["\"finish_reason\":\"tool_calls\"", "\"finish_reason\":\"length\""]],
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "length",
+        "calls": [
+          {"id": "call-a", "name": "lookup", "arguments": "{\"value\":1}"},
+          {"id": "call-b", "name": "lookup", "arguments": "{\"value\":2}"}
+        ],
+        "reasoning": [{"source": "reasoning_content", "text": "opaque reasoning"}],
+        "usage": {"input": 12, "output": 8, "total": 20}
+      }
+    },
+    "lenient": "same"
+  }
+}

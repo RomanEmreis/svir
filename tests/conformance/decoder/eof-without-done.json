@@ -1,0 +1,6 @@
+{
+  "description": "The stream ends after the usage chunk, with no [DONE].",
+  "file": "final.sse",
+  "cut_before": "data: [DONE]",
+  "expect": {"strict": {"error": "truncated_stream", "partial": {"text": "42"}}, "lenient": "same"}
+}

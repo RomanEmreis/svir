@@ -1,0 +1,18 @@
+{
+  "description": "The model listing, as the server reports it; name is optional.",
+  "config": {"base_url": "{server}/v1", "api_key": "secret-key"},
+  "server": [
+    {
+      "status": 200,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"object\": \"list\", \"data\": [{\"id\": \"a\", \"name\": \"A\"}, {\"id\": \"b\"}]}"
+    }
+  ],
+  "calls": [
+    {
+      "list_models": true,
+      "expect": {"models": [{"id": "a", "name": "A"}, {"id": "b", "name": null}]}
+    }
+  ],
+  "expect_requests": [{"method": "GET", "path": "/v1/models", "headers": {"authorization": "Bearer secret-key"}}]
+}

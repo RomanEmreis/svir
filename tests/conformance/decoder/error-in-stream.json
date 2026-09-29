@@ -1,0 +1,13 @@
+{
+  "description": "An error object inside an open stream.",
+  "chunks": [
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"error\":{\"message\":\"engine died\"}}\n\n"
+  ],
+  "strides": [1, 3, 8192],
+  "open": ["O4", "O13"],
+  "expect": {
+    "strict": {"error": "protocol", "partial": {"text": "partial"}},
+    "lenient": {"error": "protocol", "partial": {"text": "partial"}, "message": "engine died"}
+  }
+}

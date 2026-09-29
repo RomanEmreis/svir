@@ -1,0 +1,26 @@
+{
+  "description": "reasoning_content goes back unchanged under the same key.",
+  "request": {
+    "model": "m",
+    "messages": [
+      {"role": "user", "parts": [{"text": "hi"}]},
+      {
+        "role": "assistant",
+        "parts": [{"reasoning": {"source": "reasoning_content", "text": "thought"}}, {"text": "42"}]
+      },
+      {"role": "user", "parts": [{"text": "and?"}]}
+    ]
+  },
+  "options": {"send_reasoning": true},
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "messages": [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "42", "reasoning_content": "thought"},
+        {"role": "user", "content": "and?"}
+      ]
+    }
+  }
+}

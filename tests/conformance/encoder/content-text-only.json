@@ -1,0 +1,17 @@
+{
+  "description": "Text-only messages are plain string content; the body has nothing implied.",
+  "request": {
+    "model": "m",
+    "messages": [
+      {"role": "system", "parts": [{"text": "Be brief."}]},
+      {"role": "user", "parts": [{"text": "hi"}]}
+    ]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "messages": [{"role": "system", "content": "Be brief."}, {"role": "user", "content": "hi"}]
+    }
+  }
+}

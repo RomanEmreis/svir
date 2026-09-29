@@ -1,0 +1,13 @@
+{
+  "description": "429 is retryable, with Retry-After in seconds.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 429,
+      "headers": {"content-type": "application/json", "retry-after": "2"},
+      "body": "{\"error\":{\"code\":\"rate_limit\",\"message\":\"secret-server-detail\"}}"
+    }
+  ],
+  "calls": [{"expect": {"error": "rate_limited", "retryable": true, "retry_after_ms": 2000}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

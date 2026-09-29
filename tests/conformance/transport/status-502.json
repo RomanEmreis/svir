@@ -1,0 +1,13 @@
+{
+  "description": "502 is a transient transport failure.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 502,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"error\":{\"code\":\"unavailable\",\"message\":\"secret-server-detail\"}}"
+    }
+  ],
+  "calls": [{"expect": {"error": "transport", "retryable": true}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

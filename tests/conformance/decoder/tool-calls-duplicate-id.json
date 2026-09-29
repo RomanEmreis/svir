@@ -1,0 +1,6 @@
+{
+  "description": "Two calls with the same ID.",
+  "file": "tools.sse",
+  "replace": [["call-b", "call-a"]],
+  "expect": {"strict": {"error": "protocol"}, "lenient": "same"}
+}

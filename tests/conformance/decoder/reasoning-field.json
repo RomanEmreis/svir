@@ -1,0 +1,20 @@
+{
+  "description": "Reasoning in the reasoning delta key.",
+  "chunks": [
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"reasoning\":\"hmm\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"answer\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+    "data: [DONE]\n\n"
+  ],
+  "strides": [1, 3, 8192],
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "stop",
+        "text": "answer",
+        "reasoning": [{"source": "reasoning", "text": "hmm"}]
+      }
+    },
+    "lenient": "same"
+  }
+}

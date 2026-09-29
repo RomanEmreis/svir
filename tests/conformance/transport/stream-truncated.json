@@ -1,0 +1,14 @@
+{
+  "description": "The connection closes before [DONE].",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 200,
+      "headers": {"content-type": "text/event-stream"},
+      "body_file": "../decoder/final.sse",
+      "cut_before": "data: [DONE]"
+    }
+  ],
+  "calls": [{"expect": {"error": "truncated_stream", "retryable": true, "partial": {"text": "42"}}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

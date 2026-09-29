@@ -1,0 +1,5 @@
+{
+  "description": "Credentials in the URL are refused.",
+  "config": {"base_url": "http://user:pass@127.0.0.1:1234/v1"},
+  "expect_config": "rejected"
+}

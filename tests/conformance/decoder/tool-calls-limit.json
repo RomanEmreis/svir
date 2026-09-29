@@ -1,0 +1,6 @@
+{
+  "description": "More calls than the tool-call limit.",
+  "file": "tools.sse",
+  "options": {"limits": {"tool_calls": 1}},
+  "expect": {"strict": {"error": "response_limit"}, "lenient": "same"}
+}

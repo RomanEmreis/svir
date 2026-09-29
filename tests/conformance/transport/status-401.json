@@ -1,0 +1,13 @@
+{
+  "description": "401 is authentication, not retryable.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 401,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"error\":{\"code\":\"invalid_api_key\",\"message\":\"secret-server-detail\"}}"
+    }
+  ],
+  "calls": [{"expect": {"error": "authentication", "retryable": false}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

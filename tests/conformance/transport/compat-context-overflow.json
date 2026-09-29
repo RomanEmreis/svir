@@ -1,0 +1,29 @@
+{
+  "description": "A context overflow on a request with optional fields.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 400,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"error\":{\"code\":\"context_length_exceeded\",\"message\":\"secret-server-detail\"}}"
+    },
+    {
+      "status": 400,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"error\":{\"code\":\"context_length_exceeded\",\"message\":\"secret-server-detail\"}}"
+    }
+  ],
+  "calls": [
+    {
+      "request": {
+        "model": "m",
+        "reasoning_effort": "low",
+        "include_usage": true,
+        "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+      },
+      "expect": {"error": "context_overflow", "retryable": false}
+    }
+  ],
+  "expect_requests": {"open": "O3"},
+  "open": ["O3"]
+}

@@ -33,14 +33,12 @@ and observed server behavior. How svir handles each fact is in [architecture.md]
 
 - **Text only**: `content` is a plain string. Not every server accepts the array form, so use it
   only when an image requires it.
-- **With images**: `content` is an array of parts. At most one text part comes first and carries
-  all text (typed text and text files), followed by one `image_url` part per image. An image-only
-  message has no empty text part.
+- **With images**: `content` is an array of `text` and `image_url` parts. svir's layout is P12 in
+  [decisions.md](decisions.md): one text part, then the images; no empty text part.
 - **Images** go inline as data URLs:
   `{"type":"image_url","image_url":{"url":"data:<media type>;base64,<data>"}}`.
-- **Text files** go as text inside the message: each file in
-  `<file name="<name>">\n<contents>\n</file>`, files separated by a blank line, before the typed
-  text. A `"` in the name is written as `&quot;`. Local servers do not take files any other way.
+- **Text files** go as text inside the message; local servers do not take files any other way.
+  svir wraps each in `<file name="<name>">\n<contents>\n</file>` (P12).
 - **Assistant turns with tool calls** carry
   `"tool_calls":[{"id":...,"type":"function","function":{"name":...,"arguments":"<raw string>"}}]`
   next to `content`.

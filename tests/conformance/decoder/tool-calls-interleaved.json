@@ -1,0 +1,18 @@
+{
+  "description": "Two calls with split names and arguments, pieces interleaved out of index order.",
+  "file": "tools.sse",
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "tool_calls",
+        "calls": [
+          {"id": "call-a", "name": "lookup", "arguments": "{\"value\":1}"},
+          {"id": "call-b", "name": "lookup", "arguments": "{\"value\":2}"}
+        ],
+        "reasoning": [{"source": "reasoning_content", "text": "opaque reasoning"}],
+        "usage": {"input": 12, "output": 8, "total": 20}
+      }
+    },
+    "lenient": "same"
+  }
+}

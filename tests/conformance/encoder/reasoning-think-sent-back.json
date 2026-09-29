@@ -1,0 +1,16 @@
+{
+  "description": "Reasoning that came from <think> tags, asked to be sent back.",
+  "request": {
+    "model": "m",
+    "messages": [
+      {"role": "user", "parts": [{"text": "hi"}]},
+      {
+        "role": "assistant",
+        "parts": [{"reasoning": {"source": "think", "text": "thought"}}, {"text": "42"}]
+      },
+      {"role": "user", "parts": [{"text": "and?"}]}
+    ]
+  },
+  "options": {"send_reasoning": true},
+  "expect": {"open": "O2"}
+}

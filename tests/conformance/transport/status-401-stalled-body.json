@@ -1,0 +1,7 @@
+{
+  "description": "401 is reported without waiting for an error body that never comes.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [{"status": 401, "headers": {"content-type": "application/json"}, "then": "stall"}],
+  "calls": [{"expect": {"error": "authentication", "retryable": false, "within_ms": 1000}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

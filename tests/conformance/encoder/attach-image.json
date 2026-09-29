@@ -1,0 +1,23 @@
+{
+  "description": "An image makes the content an array: one text part, then the image as a data URL.",
+  "request": {
+    "model": "m",
+    "messages": [{"role": "user", "parts": [{"text": "What is this?"}, {"image": "pixel"}]}]
+  },
+  "attachments": {"pixel": {"media_type": "image/png", "hex": "89504e470d0a1a0a"}},
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {"type": "text", "text": "What is this?"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}}
+          ]
+        }
+      ]
+    }
+  }
+}

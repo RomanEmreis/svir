@@ -1,0 +1,7 @@
+{
+  "description": "A server that never sends headers times out.",
+  "config": {"base_url": "{server}/v1", "timeout_ms": 500},
+  "server": [{"stall": "headers"}],
+  "calls": [{"expect": {"error": "timeout", "retryable": true, "within_ms": 3000}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

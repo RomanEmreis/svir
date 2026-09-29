@@ -1,0 +1,13 @@
+{
+  "description": "Any other 400 is unsupported.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 400,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"error\":{\"code\":\"unsupported_parameter\",\"message\":\"secret-server-detail\"}}"
+    }
+  ],
+  "calls": [{"expect": {"error": "unsupported", "retryable": false}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

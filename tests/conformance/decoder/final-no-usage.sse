@@ -1,0 +1,6 @@
+data: {"id":"turn-2","model":"fixture-model","choices":[{"index":0,"delta":{"role":"assistant","content":"42"},"finish_reason":null}]}
+
+data: {"id":"turn-2","model":"fixture-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+

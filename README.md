@@ -54,7 +54,9 @@ belong to the application; svir gives it the pieces to build them.
 - [Architecture](docs/architecture.md) -- boundaries, components, events, strictness, errors
 - [Wire protocol](docs/wire-protocol.md) -- Chat Completions facts and observed server behavior
 - [Decisions](docs/decisions.md) -- accepted, proposed, and open
-- [Roadmap](docs/roadmap.md) -- order of work and the conformance suite
+- [Roadmap](docs/roadmap.md) -- order of work and what is left to write
+- [Conformance suite](tests/conformance/README.md) -- behavior vectors as data, independent of
+  the API
 
 ## License
 

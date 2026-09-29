@@ -1,0 +1,25 @@
+{
+  "description": "A configured key is sent as a Bearer token.",
+  "config": {"base_url": "{server}/v1", "api_key": "secret-key"},
+  "server": [
+    {
+      "status": 200,
+      "headers": {"content-type": "text/event-stream"},
+      "body_file": "../decoder/final.sse"
+    }
+  ],
+  "calls": [
+    {
+      "expect": {
+        "completion": {"finish": "stop", "text": "42", "usage": {"input": 24, "output": 3, "total": 27}}
+      }
+    }
+  ],
+  "expect_requests": [
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "headers": {"authorization": "Bearer secret-key"}
+    }
+  ]
+}

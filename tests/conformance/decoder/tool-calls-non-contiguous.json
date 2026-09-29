@@ -1,0 +1,6 @@
+{
+  "description": "Call indices 0 and 2 with no 1.",
+  "file": "tools.sse",
+  "replace": [["\"index\":1", "\"index\":2"]],
+  "expect": {"strict": {"error": "protocol"}, "lenient": "same"}
+}

@@ -1,0 +1,5 @@
+{
+  "description": "HTTPS to any host.",
+  "config": {"base_url": "https://models.example.com/v1"},
+  "expect_config": "accepted"
+}

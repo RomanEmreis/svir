@@ -1,0 +1,20 @@
+{
+  "description": "Cancelling after one event closes the connection; nothing more arrives.",
+  "config": {"base_url": "{server}/v1", "timeout_ms": 10000},
+  "server": [
+    {
+      "status": 200,
+      "headers": {"content-type": "text/event-stream"},
+      "body": "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"more\"},\"finish_reason\":null}]}\n\n",
+      "then": "stall"
+    }
+  ],
+  "calls": [
+    {
+      "client": [{"read_events": 1}, "cancel"],
+      "expect": {"cancelled": true, "partial": {"text": "partial"}}
+    }
+  ],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}],
+  "expect_closed": true
+}
