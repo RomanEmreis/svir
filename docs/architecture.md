@@ -8,7 +8,7 @@ Status: design. Nothing here is implemented yet. Decisions referenced as `D<n>`,
 
 svir is the wire protocol between an application and a language model server, packaged as a Rust
 library: request and response types, an encoder, a decoder, a transport, and compatibility
-handling. On top of that core sit opt-in building blocks: layers and a tool router (D1). It is not
+handling. On top of that core sit opt-in building blocks: layers and tool sets (D1). It is not
 an agent framework: it does not run a tool loop (D6), keep a session history, store anything, or
 speak MCP (D7).
 
@@ -51,13 +51,14 @@ Opt-in, on top of the core:
 
 - **Layers**: middleware around the provider-neutral call, including `Retry`, `Timeout`, and
   `Trace` (D15, D16).
-- **Tools**: a router of tool descriptors and handlers, and `#[tool]` (D18).
+- **Tool sets**: the `Toolbox` trait and `Tools`, a plain registry without macros (D18).
 
 Not in svir, and owned by the consumer:
 
 - the agent loop that feeds tool results back, effect journal, replay, budgets, context
   compaction, workspace tools (D6);
-- MCP client and its policy (allow lists, configuration) (D7);
+- MCP client and its policy (allow lists, configuration), and tool definitions for MCP; the bridge
+  from MCP tools to a `Toolbox` lives in neva (D7, D18);
 - conversation storage, a registry of running generations, attachment storage, authentication
   of end users;
 - retry policy beyond the opt-in `Retry` layer (D16).
@@ -310,8 +311,10 @@ while let Some(event) = stream.next().await {
 (D6):
 
 ```rust
-#[tool(descr = "Look up a value")]
-async fn lookup(value: i64) -> String { (value * 2).to_string() }
+#[derive(Deserialize, JsonSchema)]
+struct Lookup {
+    value: i64,
+}
 
 let llm = Client::openai("http://127.0.0.1:1234")
     .api_key_env("LMSTUDIO_API_KEY")
@@ -325,7 +328,8 @@ let llm = Client::openai("http://127.0.0.1:1234")
     })
     .build()?;
 
-let tools = Tools::new().add(lookup);
+let tools = Tools::new()
+    .add("lookup", "Look up a value.", |args: Lookup| async move { (args.value * 2).to_string() });
 let msg = Message::user("What changed between these two?")
     .with(Image::path("before.png"))
     .with(Image::path("after.png"))
@@ -337,7 +341,10 @@ loop {
     if done.calls.is_empty() {
         break println!("{}", done.text);
     }
-    let results = tools.call_all(&done.calls).await;
+    let mut results = Vec::new();
+    for call in &done.calls {
+        results.push(tools.call(call).await);
+    }
     request = request.assistant(done).tool_results(results);
 }
 ```
@@ -385,16 +392,35 @@ No retry happens after an event has been delivered (D16).
 
 ### 5.3 Tools
 
-`Tools::new().add(..)` registers tools explicitly (D18). `tools.call(&call)` validates the
-arguments against the tool's schema and runs its handler; a failure becomes a tool result for the
-model. `#[tool]` derives the descriptor and input schema from a function (features `macros` and
-`schemars`). `call.parse::<T>()` parses raw arguments for callers without a router.
+svir has no tool macro (D18). A tool set is anything implementing `Toolbox`: it describes tools
+to the model (`Request::tools(&toolbox)`) and answers one call at a time (`toolbox.call(&call)`).
+
+- **`Tools`**, in svir, is a plain registry: `Tools::new().add(name, description, handler)`, the
+  handler taking arguments deserialized with serde, the schema derived with the `schemars` feature
+  or given explicitly. It validates arguments and turns a failure into a tool result for the model.
+  `call.parse::<T>()` parses raw arguments for callers without a registry.
+- **MCP tools** come through neva, which implements `Toolbox` behind its `svir` feature. A function
+  written once with `#[neva::tool]` can be served over MCP and handed to a model in the same
+  process, and the tools of a remote MCP server can be handed to a model through `neva::Client`.
+  The exact neva API is neva's to decide.
+
+The pieces also compose with no bridge. An MCP tool whose handler talks to models needs only neva
+and a `Client`, injected through neva's dependency injection:
+
+```rust
+#[neva::tool(descr = "Ask another model")]
+async fn ask(models: Dc<Models>, model: String, prompt: String) -> Result<String, Error> {
+    let answer = models.get(&model)?.complete(Request::new(model).user(prompt)).await?;
+    Ok(answer.text)
+}
+```
 
 ### 5.4 Crates and features
 
-`svir` plus `svir-macros` (D14). Without features: types and the codec. `client` (default):
-`Client`, `EventStream`, and the reqwest and tokio transport. `macros`, `schemars`, `tracing`, and
-`testing` (a `MockServer` and scripted event streams for the caller's own tests) are opt-in.
+One crate, `svir`, with no procedural macros (D14). Without features: types and the codec.
+`client` (default): `Client`, `EventStream`, and the reqwest and tokio transport. `schemars`,
+`tracing`, and `testing` (a `MockServer` and scripted event streams for the caller's own tests)
+are opt-in.
 
 ## 6. Security
 
@@ -404,7 +430,8 @@ model. `#[tool]` derives the descriptor and input schema from a function (featur
   implicitly (D17).
 - Plain HTTP to a non-loopback host is refused unless the caller opts in (P4).
 - Tool descriptions and tool arguments are data from the model. svir executes nothing on its own:
-  `Tools` runs only handlers the caller registered, with arguments validated against their schemas.
+  a `Toolbox` runs only handlers the caller registered, and `Tools` validates arguments against
+  their schemas first.
 
 ## 7. Testing
 

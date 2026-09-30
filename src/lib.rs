@@ -1,9 +1,9 @@
 //! A small, composable SDK for talking to large language models.
 //!
 //! The core is the wire protocol between an application and a model server: the types in this
-//! crate, an encoder, a decoder, a transport, and compatibility handling. Layers and a tool
-//! router sit on top, opt-in. There is no agent loop: feeding tool results back is a few lines of
-//! the caller's code.
+//! crate, an encoder, a decoder, a transport, and compatibility handling. Layers and tool sets
+//! sit on top, opt-in. There is no agent loop: feeding tool results back is a few lines of the
+//! caller's code.
 //!
 //! So far this crate has the types and errors; the codec and the client follow.
 //!

@@ -17,7 +17,8 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
 6. **First consumer.** A chat backend moves over; its existing tests must pass unchanged. An agent
    engine follows when convenient.
 7. **Layers.** The layer trait, `wrap`, `Retry`, `Timeout`, and `Trace`.
-8. **Tools.** The router, `svir-macros` with `#[tool]`, and schemars schemas.
+8. **Tools.** The `Toolbox` trait, the `Tools` registry, and schemars schemas. The MCP bridge
+   is neva's work, behind its `svir` feature (D18).
 
 ## Conformance suite
 

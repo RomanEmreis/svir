@@ -34,7 +34,9 @@ mlx-lm, llama.cpp, vLLM, and hosted endpoints.
 On top of that core, opt-in:
 
 - **Layers**: middleware around every call, with `Retry`, `Timeout`, and `Trace` built in.
-- **Tools**: a router of tool handlers, and `#[tool]` to define one from a function.
+- **Tools**: a `Toolbox` trait for anything that describes tools to a model and answers its
+  calls, and `Tools`, a plain registry of typed handlers. No macros: tools defined for MCP with
+  neva can be handed to a model through neva's side of the bridge.
 
 Not covered, on purpose: an agent loop, session history, storage, and MCP. Those belong to the
 application; svir gives it the pieces to build them.

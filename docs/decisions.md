@@ -10,14 +10,14 @@ decision before the code that depends on it).
 
 svir is the protocol between an application and a model server: types, encoder, decoder,
 transport, and compatibility handling. On top of that core sit opt-in building blocks: layers
-(D15) and a tool router (D18). The core does not depend on them. There is no agent loop and no
+(D15) and tool sets (D18). The core does not depend on them. There is no agent loop and no
 session state (D6).
 
 svir should be small, composable, and pleasant to use, fit both a chat backend and an agent
 engine without either bending around it, and be useful to anyone with a similar job.
 
-*Revised 2026-09-29: originally "a wire-protocol SDK" only; layers and the tool router were added
-with the API design (D13-D19).*
+*Revised 2026-09-29: originally "a wire-protocol SDK" only; layers and a tool router were added
+with the API design (D13-D19). Revised 2026-09-30: the router lost its `#[tool]` macro (D18).*
 
 ### D2. A standalone repository
 
@@ -55,9 +55,12 @@ small optional loop helper may be reconsidered later (O9).
 
 ### D7. MCP stays outside
 
-svir provides tool descriptors, calls, and results, and the tool router (D18). An MCP bridge (for
-example neva tools into the router) lives in the consumer or, later, behind an optional feature.
-MCP policy (allow lists, configuration, credentials) is always the consumer's.
+svir provides tool descriptors, calls, and results, and the `Toolbox` trait (D18). svir does not
+depend on an MCP SDK. The bridge from MCP tools to a `Toolbox` lives on the MCP side: in neva,
+behind a `svir` feature (D18). MCP policy (allow lists, configuration, credentials) is always the
+consumer's.
+
+*Revised 2026-09-30: the bridge was "in the consumer or behind an optional svir feature".*
 
 ### D8. License: MIT OR Apache-2.0
 
@@ -114,7 +117,7 @@ lists models. Calls accept a `Request` or a `&Request`.
 - `.assistant(completion)` adds a model answer with its text, tool calls, and reasoning, so
   nothing needed for the next turn can be lost; `.tool_result(id, content)` and
   `.tool_results(results)` answer calls;
-- `.tools(&tools)` or `.tool(Tool)`;
+- `.tools(&toolbox)` with anything implementing `Toolbox` (D18), or `.tool(Tool)`;
 - `.reasoning(Effort)`, `.max_tokens(n)`, `.temperature(t)`, `.send_reasoning(bool)`.
 
 `Effort` is `Off`, `Low`, `Medium`, `High`, or `XHigh`. Each adapter maps it explicitly: Chat
@@ -132,21 +135,21 @@ extension or `.media_type(..)`. In memory: `Image::bytes(buf, media_type)`,
 
 Everyday imports come from `svir::prelude`.
 
-### D14. One crate, plus macros
+### D14. One crate, no procedural macros
 
-`svir` is one crate with features; `svir-macros` holds the procedural macros and is re-exported
-under the `macros` feature.
+`svir` is one crate with features. It has no procedural macros and no `svir-macros` crate (D18).
 
 | Feature | Adds |
 | --- | --- |
 | none | Types and the codec; attachments in memory only |
 | `client` (default) | `Client`, `EventStream`, the reqwest 0.13 and tokio transport, attachments from disk |
-| `macros` | `#[tool]` |
 | `schemars` | Tool input schemas derived from types |
 | `tracing` | The `Trace` layer |
 | `testing` | `MockServer` (the conformance suite's scripted loopback server) and scripted event streams |
 
 A crate family is for later, when a second wire API or a heavy optional part justifies it.
+
+*Revised 2026-09-30: `svir-macros` and the `macros` feature were dropped with `#[tool]`.*
 
 ### D15. Layers and middleware
 
@@ -182,18 +185,64 @@ The compatibility retry (D11) stays in the adapter: nothing was generated.
 sent as a sensitive header, never in errors or events. svir never reads environment variables or
 `.env` files implicitly; loading `.env` (for example with dotenvy) belongs to the application.
 
-### D18. A tool router, with explicit registration
+### D18. Tool sets: a trait, a plain registry, and no `#[tool]`
 
-`Tools` holds tool descriptors and their handlers. It is built explicitly,
-`Tools::new().add(lookup)`, never from a global registry: different requests and agents use
-different tool sets, unlike a server with one tool set per process.
+A tool is one concept wherever it is served: a name, a description, a JSON Schema for the input,
+and a handler. An MCP tool and a function-calling tool match almost field for field. neva already
+defines tools well: its `#[tool]` macro, schemas through schemars, argument names, sync and async
+handlers, and dependency injection kept out of the schema. A second `#[tool]` in svir would be a
+second implementation of the same thing, and a function served both over MCP and to a model would
+carry two attributes. So svir has no tool macro.
 
-- `tools.call(&call)` validates the arguments against the tool's schema and runs one handler.
-  Failures become tool results for the model, not errors of the request.
-- `#[tool(descr = "...")]` (feature `macros`) turns a function into a tool, its input schema
-  derived through schemars, as in neva.
-- `call.parse::<T>()` parses the raw arguments on demand. Resolves O8.
-- The router answers calls; feeding the answers back is the caller's (D6).
+**`Toolbox`.** svir defines the trait for anything that can describe tools to a model and answer
+its calls:
+
+```rust
+pub trait Toolbox {
+    fn tools(&self) -> Vec<Tool>;
+    fn call(&self, call: &ToolCall) -> impl Future<Output = ToolResult> + Send;
+}
+```
+
+`Request::tools(&toolbox)` takes the descriptors from it, and `toolbox.call(&call)` answers one
+call. Feeding the answers back to the model is the caller's (D6).
+
+**`Tools`.** A plain registry for callers without MCP, built explicitly and never from a global
+registry, since different requests and agents use different tool sets:
+
+```rust
+let tools = Tools::new()
+    .add("lookup", "Look up a value.", |args: Lookup| async move { lookup(args.value) });
+```
+
+Arguments are deserialized with serde; the input schema comes from the type with the `schemars`
+feature, or is given explicitly. `tools.call(&call)` validates the arguments and runs one handler;
+a failure becomes a tool result for the model, not an error of the request. `call.parse::<T>()`
+parses raw arguments for callers without a registry. Resolves O8.
+
+**The MCP bridge lives in neva**, behind a `svir` feature, and implements `Toolbox` twice:
+
+- for neva's own tools, so a function written once with `#[neva::tool]` is served over MCP and
+  handed to a model in the same process. Calling a tool in-process without an MCP session needs
+  neva's internals, which is why the bridge belongs there;
+- for `neva::Client`, so the tools of a remote MCP server are handed to a model: `list_tools`
+  becomes the descriptors, `call_tool` forwards each call.
+
+neva depends on svir optionally; svir never depends on neva. What the bridge has to settle, in
+neva:
+
+- tools that need an MCP session (elicitation, progress, sampling) get a detached context or a
+  clear error when called in-process;
+- an MCP result is content blocks and structured content, while a `ToolResult` is a string (P12):
+  text is joined, structured content is sent as JSON text, and images or resources are an explicit
+  error, not dropped silently;
+- only tools visible to the model are offered to it.
+
+The same pieces also compose without any bridge: an MCP tool whose handler calls svir, for
+example one `ask(model, prompt)` tool that routes to different models by its arguments, needs only
+`#[neva::tool]` and a `Client` injected through neva's dependency injection.
+
+*Revised 2026-09-30: was "a tool router, with explicit registration" with svir's own `#[tool]`.*
 
 ### D19. The server's own message behind an accessor
 
@@ -334,6 +383,9 @@ the configured context size; otherwise it fails with `ContextOverflow` before a 
 - **O13. The kind of an error inside an open stream.** It is a server-side failure, possibly
   transient, not a malformed stream. Today it maps to `Protocol`, which is not retryable. A
   separate kind, and is it retryable?
+- **O14. Failed tool results.** A `Toolbox` turns a failure into a tool result. Should
+  `ToolResult` carry an `is_error` flag? Some APIs have one; Chat Completions would carry it only
+  in the text.
 
 Resolved: O1 (API names and DX) by D13-D18, O4 (server error messages) by D19, O8 (tool
 arguments) by D18.
