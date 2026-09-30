@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest an idea or improvement
+labels: ["feature", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        svir is the wire protocol between an application and a model server, with opt-in layers and tool sets. An agent loop, session history, storage, and MCP are out of scope on purpose; see CONTRIBUTING.md.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      placeholder: "I'm trying to..., but currently..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      placeholder: "It would be great if svir could..."
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      placeholder: "I tried..., but..."
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      placeholder: "Links, related issues, the model server or wire API involved, examples..."

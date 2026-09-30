@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions / Discussions
+    url: https://github.com/RomanEmreis/svir/discussions
+    about: Please use Discussions for questions and early ideas.
+  - name: Security vulnerability
+    url: https://github.com/RomanEmreis/svir/security/advisories/new
+    about: Please report a vulnerability privately, as SECURITY.md describes, not in a public issue.

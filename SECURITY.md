@@ -6,10 +6,8 @@ process is intentionally lightweight.
 
 ## Supported Versions
 
-svir is not published yet. Until the first release, security fixes land on `main`.
-
-From the first release on, during the **0.x** stage, we generally **support security
-fixes only for the latest released version**.
+During the **0.x** stage, we generally **support security fixes only for the latest
+released version**. Until the first release is out, fixes land on `main`.
 
 - **Supported:** latest `0.x.y`
 - **Not supported:** older `0.x.y` versions (no backports)

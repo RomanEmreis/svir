@@ -3,9 +3,16 @@
 A small, composable Rust SDK for talking to large language models: the wire protocol between your
 application and a model server, and nothing it does not need.
 
-> **Status**: early. The Chat Completions codec, the client, layers, and tool sets exist and run
-> against real servers; nothing is published yet, and names may still change. The design record
-> is in [docs/](docs/).
+[![latest](https://img.shields.io/badge/latest-0.1.0-blue)](https://crates.io/crates/svir)
+[![rustc](https://img.shields.io/badge/rustc-1.85+-964B00)](https://releases.rs/docs/1.85.0/)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-violet.svg)](#license)
+[![CI](https://github.com/RomanEmreis/svir/actions/workflows/rust.yml/badge.svg)](https://github.com/RomanEmreis/svir/actions/workflows/rust.yml)
+[![Release](https://github.com/RomanEmreis/svir/actions/workflows/release.yml/badge.svg)](https://github.com/RomanEmreis/svir/actions/workflows/release.yml)
+
+> **Status**: svir is in preview. The public API may still change between `0.x` releases; what
+> changed is in the [changelog](CHANGELOG.md), and why it is the way it is in [docs/](docs/).
+
+[API Docs](https://docs.rs/svir/latest/svir/) | [Examples](examples/) | [Design record](docs/)
 
 ## The name
 
@@ -16,6 +23,12 @@ bodies of water that already exist: two independent, working implementations of 
 protocol, each strong where the other is weak.
 
 ## A first look
+
+```toml
+[dependencies]
+svir = "0.1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+```
 
 ```rust
 use svir::prelude::*;
@@ -122,7 +135,8 @@ SVIR_MODEL=<model> cargo run --example stream
 
 Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the
 [Code of Conduct](CODE_OF_CONDUCT.md). To report a vulnerability, follow
-[SECURITY.md](SECURITY.md) instead of opening an issue.
+[SECURITY.md](SECURITY.md) instead of opening an issue. Releases are listed in the
+[changelog](CHANGELOG.md).
 
 ## License
 

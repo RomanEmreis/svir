@@ -1,0 +1,165 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  # A push to main that GitHub fails to deliver leaves main untested; this re-runs it by hand
+  workflow_dispatch:
+
+# Nothing here writes to the repository. `audit` asks for the one permission it needs.
+permissions:
+  contents: read
+
+# A new push to a pull request makes the run for the previous one pointless
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  format_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      # Code, docs, and conformance cases are ASCII (see CONTRIBUTING.md). An em dash or a
+      # curly quote pasted from elsewhere looks fine in review, so it is caught here.
+      - name: Check that code and docs are ASCII
+        run: |
+          bad=$(
+            git ls-files -z -- '*.rs' '*.md' '*.toml' '*.json' '*.sse' '*.yml' .gitattributes .gitignore \
+              | LC_ALL=C xargs -0 grep -nP '[^\x00-\x7F]' || true
+          )
+          if [ -n "$bad" ]; then
+            echo "::error::These lines have characters outside ASCII. Use -, ->, ..., and straight quotes; write test text with JSON \u escapes."
+            echo "$bad"
+            exit 1
+          fi
+
+  clippy_check:
+    runs-on: ubuntu-latest
+    needs: format_check
+
+    # One row per shape the crate is built in: a feature that compiles only next to another
+    # one is found by the row that leaves the other out.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Clippy with the default features
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Run Clippy on the codec alone
+        run: cargo clippy --locked --no-default-features --all-targets -- -D warnings
+      - name: Run Clippy on the client without TLS
+        run: cargo clippy --locked --no-default-features --features client --all-targets -- -D warnings
+      - name: Run Clippy with all features
+        run: cargo clippy --locked --all-features --all-targets -- -D warnings
+
+  msrv_check:
+    runs-on: ubuntu-latest
+    needs: format_check
+
+    # Every other job runs on the runner's stable toolchain, so the MSRV that `rust-version`
+    # advertises is otherwise never exercised. `--all-targets` pulls in dev-dependencies,
+    # which is where an MSRV regression is most likely to sneak in.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read MSRV from the manifest
+        id: msrv
+        run: echo "version=$(grep -m1 '^rust-version' Cargo.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+      - name: Check on MSRV with all features
+        run: cargo check --locked --all-features --all-targets
+      - name: Check the codec alone on MSRV
+        run: cargo check --locked --no-default-features --all-targets
+
+  audit:
+    runs-on: ubuntu-latest
+    needs: format_check
+
+    # audit-check publishes results via the Checks API; without `checks: write`
+    # it fails hard on push and silently passes on pull_request.
+    permissions:
+      contents: read
+      checks: write
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Security audit
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  doc_check:
+    runs-on: ubuntu-latest
+    needs: format_check
+    env:
+      RUSTDOCFLAGS: -D warnings
+
+    steps:
+      - uses: actions/checkout@v4
+      # docs.rs builds with every feature on
+      - name: Check documentation
+        run: cargo doc --no-deps --locked --all-features
+      # With every feature on, every intra-doc link resolves. A link to an item behind a
+      # feature breaks only where that feature is off.
+      - name: Check documentation with the default features
+        run: cargo doc --no-deps --locked
+      - name: Check documentation of the codec alone
+        run: cargo doc --no-deps --locked --no-default-features
+
+  test:
+    runs-on: ubuntu-latest
+    needs: [clippy_check, doc_check]
+
+    # No model server here, and none needed: the suite runs on recorded fixtures and a
+    # scripted loopback server. `tests/live.rs` is ignored unless asked for.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests with the default features
+        run: cargo test --locked
+      - name: Run tests with all features
+        run: cargo test --locked --all-features
+      - name: Run tests of the codec alone
+        run: cargo test --locked --no-default-features
+      - name: Run tests of the client without TLS
+        run: cargo test --locked --no-default-features --features client
+
+  cross_platform:
+    needs: [clippy_check, doc_check]
+
+    strategy:
+      # A Windows failure and a macOS failure are different findings, and the first one to
+      # go red should not hide the other.
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    # Every other job runs on Linux. What differs elsewhere is what touches the system:
+    # attachments read from disk, paths, sockets, and the line endings of the fixtures,
+    # which `.gitattributes` keeps at LF.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Clippy
+        run: cargo clippy --locked --all-features --all-targets -- -D warnings
+      - name: Run tests
+        run: cargo test --locked --all-features
+
+  package_check:
+    runs-on: ubuntu-latest
+    needs: [clippy_check, doc_check]
+
+    # What is published is the packaged crate, not the checkout: a file left out of the
+    # package, or a manifest crates.io would refuse, shows here and not on release day.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package the crate and build it from the package
+        run: cargo package --locked

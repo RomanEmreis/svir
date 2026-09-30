@@ -6,10 +6,16 @@ rust-version = "1.85"
 description = "A small, composable SDK for talking to large language models"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/RomanEmreis/svir"
+documentation = "https://docs.rs/svir"
 authors = ["Roman Emreis <me@romanemreis.com>"]
 readme = "README.md"
 keywords = ["llm", "openai", "sse", "streaming", "ai"]
 categories = ["api-bindings", "asynchronous"]
+# The package keeps the conformance suite and the examples; repository plumbing stays out.
+exclude = [".github/", ".gitattributes"]
+
+[package.metadata.docs.rs]
+all-features = true
 
 [features]
 default = ["client", "tls"]

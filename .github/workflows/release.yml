@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  # Publishes again by hand when the run for a release did not get through
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag to publish from, such as 0.1.0"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    environment: CICD
+    runs-on: ubuntu-latest
+
+    # The job that holds the registry token runs no third-party action: the toolchain comes
+    # from rustup, which the runner image carries.
+    env:
+      # Passed as data: a tag name never becomes part of a script
+      TAG: ${{ github.event.release.tag_name || inputs.ref }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.ref }}
+
+      - name: Use the latest stable toolchain
+        run: rustup update stable && rustup default stable
+
+      # A release published from the wrong tag, or before the version was bumped, would
+      # otherwise go to crates.io under whatever version the manifest still has. A version
+      # there cannot be replaced, only yanked.
+      - name: Check that the tag is the version in the manifest
+        run: |
+          version=$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "svir") | .version')
+          if [ "${TAG#v}" != "$version" ]; then
+            echo "::error::The tag is $TAG, but Cargo.toml says $version."
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Check that the changelog has this version
+        run: |
+          if ! grep -qE "^## ${VERSION//./\\.}( |$)" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no section for $VERSION."
+            exit 1
+          fi
+
+      - name: Run tests
+        run: cargo test --locked --all-features
+
+      # `cargo publish` builds the crate from its package before it uploads anything, and
+      # reads the token from the environment.
+      - name: Publish svir
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked

@@ -1,0 +1,65 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! If this is a potential security issue, please use SECURITY.md instead of filing a public issue.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug and what you expected to happen.
+      placeholder: "When I do X, I expect Y, but Z happens."
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps or a small snippet. For an error, include its kind (`error.kind()`).
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: svir version
+      description: The version, or the commit if you build from the repository. Name the features if they are not the default ones.
+      placeholder: "e.g. 0.1.0, features: schemars"
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Model server
+      description: The server svir talks to, its version, and the model, if the bug involves one.
+      placeholder: "e.g. LM Studio 0.4.2, qwen3-27b"
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime / environment
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: stream
+    attributes:
+      label: What the server sent
+      render: text
+      description: |
+        When svir misreads a response, the raw response settles it: the output of `cargo run --example relay`, or of `curl -N` with the same request. Remove API keys and anything private.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / error output
+      render: text
+      description: Paste relevant logs (redact secrets).

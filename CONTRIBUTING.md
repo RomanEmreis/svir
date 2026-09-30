@@ -62,6 +62,9 @@ Draft PRs are totally fine if you want early feedback.
 
 ### Before you push
 
+CI runs these on Linux, the tests on macOS and Windows as well, and a check on the oldest
+supported Rust (`rust-version` in `Cargo.toml`):
+
 ```sh
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
@@ -101,6 +104,16 @@ Breaking changes are welcome, but:
 - Migration guidance is highly appreciated.
 
 The public API includes the serde form of public types and the error kinds.
+
+## Changelog and releases
+
+A change a user of the crate can notice gets a line in [CHANGELOG.md](CHANGELOG.md), under
+the version it will ship in.
+
+A release is cut by a maintainer: the version in `Cargo.toml` and its section in the
+changelog go to `main`, then a GitHub release is published with the version as its tag
+(`0.1.0`, no prefix). Publishing the release sends the crate to crates.io, after checking
+that the tag, the manifest, and the changelog agree.
 
 ## License
 
