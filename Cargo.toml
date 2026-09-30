@@ -11,11 +11,22 @@ readme = "README.md"
 keywords = ["llm", "openai", "sse", "streaming", "ai"]
 categories = ["api-bindings", "asynchronous"]
 
+[features]
+default = ["client"]
+# Attachments read from disk while the body streams. The HTTP client joins this feature next.
+client = ["dep:futures-util", "dep:tokio"]
+
 [dependencies]
 base64 = "0.22"
 bytes = "1"
+futures-util = { version = "0.3", default-features = false, features = ["std"], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tokio = { version = "1", features = ["fs", "io-util"], optional = true }
+
+[dev-dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+tokio = { version = "1", features = ["fs", "io-util", "macros", "rt"] }
 
 [lints.rust]
 unsafe_code = "forbid"

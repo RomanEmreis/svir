@@ -10,7 +10,7 @@ on an open decision lists it in `open`.
 | Directory | Covers | Status |
 | --- | --- | --- |
 | `decoder/` | SSE framing, deltas, reasoning, tool calls, usage, limits, strict and lenient | 46 cases, run by `tests/conformance_decoder.rs` |
-| `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, admission | 22 cases |
+| `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, admission | 22 cases, run by `tests/conformance_encoder.rs` |
 | `transport/` | Authentication, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 42 cases |
 
 ## Decoder cases
@@ -140,8 +140,10 @@ Everything but `model` and `messages` is optional and present only when the requ
 
 Running a case:
 
-1. Write each attachment to a file. `declared_size` is the size it was recorded at; when it differs
-   from the content, the file changed after it was recorded.
+1. Write each attachment to a file. One with a `declared_size` changed after it was recorded:
+   write a file of that size, build the body, then write the content the case gives before
+   reading the body. An implementation that also takes attachments in memory runs those cases
+   without a `declared_size` that way too.
 2. Produce the body once for each size in `block_bytes`, and once with the implementation's
    default block size.
 3. For `body`: the number of bytes streamed equals the declared length; the bytes parse as JSON

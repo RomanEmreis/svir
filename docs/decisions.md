@@ -278,6 +278,11 @@ that inline the tags read no reasoning field in a request, and the chat template
 drop earlier reasoning from the history anyway; putting it back into the text would only spend
 context. This is a documented rule, not a silent loss.
 
+### D24. An assistant message with tool calls and no text has empty-string content
+
+Resolves O11. `"content": ""`, not `null`. The chat templates of many local models join `content`
+as a string and fail on `null`, while an empty string is accepted everywhere.
+
 ## Proposed
 
 ### P1. Edition 2024; MSRV 1.85
@@ -286,12 +291,16 @@ For a library meant for others, the lower the better, as long as nothing newer i
 the lowest version edition 2024 allows. Clippy's `incompatible_msrv` checks standard library use
 against it; a CI job on 1.85 itself should confirm it.
 
-### P2. The decoder does no I/O; the encoder reads files only while streaming
+### P2. The decoder does no I/O; the encoder touches files only behind `client`
 
 The decoder takes bytes and gives events, so it works with any transport and can decode a stream
-that is being forwarded elsewhere. The encoder builds JSON segments and file descriptions without
-I/O; files are read only while the body streams, which needs the `client` feature (D14). Without
-it, attachments are in memory.
+that is being forwarded elsewhere.
+
+`Encoder::encode` does no I/O either, and takes attachments held in memory; `Body::into_bytes`
+gives the whole body. Attachments held as file paths need the `client` feature (D14):
+`Encoder::encode_files` measures them first (an image by its size, a text file by one read that
+also checks it is UTF-8), and `Body::into_stream` reads them again, a block at a time, as the body
+is sent.
 
 ### P3. Superseded by D16
 
@@ -366,8 +375,10 @@ An attachment that cannot be read, or no longer has its recorded size, fails the
 
 ### P14. Admission
 
-A request is admitted when `max_tokens` is above 0 and the body length plus `max_tokens` fits in
-the configured context size; otherwise it fails with `ContextOverflow` before a byte is sent.
+With a context size configured, a request is admitted when the body length plus `max_tokens`
+fits in it and `max_tokens` is not 0; otherwise it fails with `ContextOverflow` before a byte is
+sent. A request without `max_tokens` reserves nothing for the answer. The body length in bytes
+stands in for its length in tokens, which it never underestimates (but see O5).
 
 ### P15. Accepted as D20
 
@@ -388,7 +399,6 @@ the configured context size; otherwise it fails with `ContextOverflow` before a 
 - **O7. `Retry-After` as an HTTP date.** Only numeric seconds are handled today.
 - **O9. An optional loop helper.** See D6.
 - **O10. Model listing.** Is the non-chat model filter part of svir or of the application?
-- **O11. Assistant `content` with tool calls.** An empty string or `null`? Servers differ.
 - **O12. Answer-changing anomalies in lenient mode.** An unknown finish reason (`content_filter`)
   or content after the finish reason: complete with what was received, or fail?
 - **O13. The kind of an error inside an open stream.** It is a server-side failure, possibly
@@ -399,4 +409,4 @@ the configured context size; otherwise it fails with `ContextOverflow` before a 
   in the text.
 
 Resolved: O1 (API names and DX) by D13-D18, O2 (`<think>` splitting) by D23, O4 (server error
-messages) by D19, O8 (tool arguments) by D18.
+messages) by D19, O8 (tool arguments) by D18, O11 (assistant content with tool calls) by D24.

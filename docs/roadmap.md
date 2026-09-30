@@ -11,8 +11,10 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
 3. **Decoder.** Done: `svir::openai::chat::Decoder` with SSE framing, tool-call assembly,
    limits, `<think>` splitting, live reasoning, strict and lenient modes, and timing. All 46 decoder
    cases pass in `tests/conformance_decoder.rs`; the two lenient O12 cases are pending.
-4. **Encoder.** The streamed body with an exact length and attachments; tools, tool calls,
-   tool results, and reasoning sent back.
+4. **Encoder.** Done: `svir::openai::chat::Encoder` and `Body`, with the exact length,
+   attachments from memory and from disk, tools, tool calls and results, reasoning sent back, and
+   admission. All 22 encoder cases pass in `tests/conformance_encoder.rs`, at every block size
+   and from memory.
 5. **Transport and compatibility.** HTTP, authentication, status mapping, timeouts,
    cancellation, optional-field learning, model listing.
 6. **First consumer.** A chat backend moves over; its existing tests must pass unchanged. An agent

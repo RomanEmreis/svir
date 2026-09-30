@@ -97,17 +97,27 @@ builder methods, with public fields for reading.
 
 ### 4.2 Encoder
 
-The body is built as a sequence of segments: literal JSON bytes, serialized up front, and file
-segments read from disk on demand. Each segment's encoded length is known in advance:
+It is `svir::openai::chat::Encoder`, and it produces a `Body` (P2):
+
+- `encoder.encode(&request)` does no I/O and takes attachments held in memory;
+- `encoder.encode_files(&request).await` (feature `client`) first measures attachments held as
+  file paths;
+- `body.len()` is the exact length; `body.into_bytes()` gives an in-memory body whole, and
+  `body.into_stream()` (feature `client`) reads files as the body is sent. A `Body` is cheap to
+  clone, and a clone produces the same bytes.
+
+The body is built as a sequence of segments: literal JSON bytes, serialized up front, and
+attachment segments encoded on demand. Each segment's encoded length is known in advance:
 
 - base64 of `n` bytes is `4 * ceil(n / 3)`;
-- a text file's JSON-escaped length is measured once, when the file is accepted.
+- a text file's JSON-escaped length is measured when the body is built, in one read of the file
+  that also checks it is UTF-8.
 
 So the total length is exact before streaming starts, and the request is sent with
-`Content-Length` rather than chunked. Nothing is read from disk until the stream is polled, so a
-body can be produced again cheaply for a retry, byte for byte. A file that no longer has its
-recorded size fails the stream with `Attachment` (P13) instead of sending a body that disagrees
-with its `Content-Length`.
+`Content-Length` rather than chunked. A file that cannot be read, is no longer the size it was
+measured at, or no longer encodes to the measured length fails the stream with `Attachment` (P13)
+instead of sending a body that disagrees with its `Content-Length`. When the recorded size is
+used up, one more read confirms the file ends there.
 
 Files are read in blocks whose size is a multiple of 3, so base64 blocks concatenate without
 inner padding. JSON escaping is byte-wise: only ASCII bytes ever need escaping, and every byte of
@@ -119,12 +129,16 @@ What goes into the body:
 - only what the request sets, plus `stream: true`; nothing is implied (P11);
 - messages laid out as in P12: plain string content unless there is an image, text and files
   joined into one text part in the order given, images after it as data URLs, tool results as
-  the caller's string, reasoning sent back only on request under the key it arrived with;
+  the caller's string, reasoning sent back only on request under the key it arrived with and
+  never when it came from `<think>` tags (D23), and empty-string content for a model message with
+  tool calls and no text (D24);
+- a part its role cannot carry, such as an image in a model message, is `Unsupported`, and an
+  image without a media type is `Attachment`: nothing is dropped silently;
 - tools as `{"type": "function", "function": {"name", "description", "parameters"}}`.
 
-Admission (P14): the declared length plus `max_tokens` must fit in the configured context size,
-and `max_tokens` must be above 0, or the request fails with `ContextOverflow` before a byte is
-sent.
+Admission (P14): with `encoder.context_tokens(n)`, the length plus `max_tokens` must fit in the
+context size and `max_tokens` must not be 0, or the request fails with `ContextOverflow` before a
+byte is sent.
 
 ### 4.3 Decoder
 

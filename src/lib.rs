@@ -5,8 +5,8 @@
 //! sit on top, opt-in. There is no agent loop: feeding tool results back is a few lines of the
 //! caller's code.
 //!
-//! So far this crate has the types, the errors, and the Chat Completions decoder
-//! ([`openai::chat::Decoder`]); the encoder and the client follow.
+//! So far this crate has the types, the errors, and the Chat Completions codec
+//! ([`openai::chat::Encoder`] and [`openai::chat::Decoder`]); the client follows.
 //!
 //! ```
 //! use svir::prelude::*;
