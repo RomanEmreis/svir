@@ -4,13 +4,14 @@ use std::time::Duration;
 
 use serde_json::Value;
 
+use super::overflow;
 use crate::{Error, ErrorKind};
 
 /// A retry delay the server asks for is honored up to this.
 const RETRY_AFTER_LIMIT: Duration = Duration::from_secs(30);
 
 /// Whether the kind of this status depends on the response body: a rejected request may be a
-/// context overflow, which only the body's error code tells.
+/// context overflow, which only the body tells.
 pub(crate) fn kind_is_in_body(status: u16) -> bool {
     matches!(status, 400 | 413 | 422)
 }
@@ -19,23 +20,30 @@ pub(crate) fn kind_is_in_body(status: u16) -> bool {
 pub(crate) fn classify(status: u16, retry_after: Option<&str>, body: &[u8]) -> Error {
     let parsed = serde_json::from_slice::<Value>(body).ok();
     let reported = parsed.as_ref().and_then(|body| body.get("error"));
-    let code = reported
-        .and_then(|error| error.get("code"))
-        .and_then(Value::as_str);
+
+    // The server's own words: the message of a JSON error, or a plain-text body as it is.
+    let message = match &parsed {
+        Some(_) => reported
+            .and_then(|error| error.get("message").or(Some(error)))
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        None => std::str::from_utf8(body)
+            .ok()
+            .map(|text| text.trim().to_owned()),
+    };
+
+    // A rejected request is an overflow when its error names one, or its message says so (D30).
+    let overflowed = || {
+        reported.is_some_and(overflow::is_overflow)
+            || message.as_deref().is_some_and(overflow::says_overflow)
+    };
 
     let kind = match status {
         401 | 403 => ErrorKind::Authentication,
         429 => ErrorKind::RateLimited,
         408 | 504 => ErrorKind::Timeout,
         500 | 502 | 503 => ErrorKind::Transport,
-        400 | 413 | 422
-            if matches!(
-                code,
-                Some("context_length_exceeded" | "context_window_exceeded")
-            ) =>
-        {
-            ErrorKind::ContextOverflow
-        }
+        400 | 413 | 422 if overflowed() => ErrorKind::ContextOverflow,
         _ => ErrorKind::Unsupported,
     };
 
@@ -48,17 +56,6 @@ pub(crate) fn classify(status: u16, retry_after: Option<&str>, body: &[u8]) -> E
     if let Some(delay) = delay {
         error = error.with_retry_after(delay);
     }
-
-    // The server's own words: the message of a JSON error, or a plain-text body as it is.
-    let message = match &parsed {
-        Some(_) => reported
-            .and_then(|error| error.get("message").or(Some(error)))
-            .and_then(Value::as_str)
-            .map(str::to_owned),
-        None => std::str::from_utf8(body)
-            .ok()
-            .map(|text| text.trim().to_owned()),
-    };
 
     match message.filter(|message| !message.is_empty()) {
         Some(message) => error.with_server_message(message),
@@ -103,6 +100,25 @@ mod tests {
         assert_eq!(kind(413, overflow), ErrorKind::ContextOverflow);
         // The code means nothing on a status that is not a rejected request.
         assert_eq!(kind(500, overflow), ErrorKind::Transport);
+    }
+
+    #[test]
+    fn an_overflow_is_told_by_its_type_or_its_message() {
+        let typed = r#"{"error":{"code":400,"type":"exceed_context_size_error","message":"x"}}"#;
+        let said = r#"{"error":{"message":"This model's maximum context length is 8192 tokens."}}"#;
+        let bare = r#"{"error":"the request exceeds the available context size"}"#;
+        let plain = "Input exceeds the context window\n";
+
+        for body in [typed, said, bare, plain] {
+            assert_eq!(kind(400, body), ErrorKind::ContextOverflow, "{body}");
+            assert_eq!(kind(422, body), ErrorKind::ContextOverflow, "{body}");
+            assert_eq!(kind(500, body), ErrorKind::Transport, "{body}");
+            assert_eq!(kind(404, body), ErrorKind::Unsupported, "{body}");
+        }
+        assert_eq!(
+            kind(400, r#"{"error":{"message":"bad field"}}"#),
+            ErrorKind::Unsupported
+        );
     }
 
     #[test]

@@ -326,9 +326,8 @@ with TLS), and the TLS build needs no cmake.
 ### D26. No compatibility retry for a context overflow
 
 Resolves O3. A 400 or 422 whose `error.code` says the context overflowed is not about the optional
-fields, so it is reported at once, without the lean retry of D11. A server that reports an
-overflow only in its message text still gets the retry, which then fails, and the original error
-is reported.
+fields, so it is reported at once, without the lean retry of D11. The same holds for an overflow
+recognized by its type or its message (D30).
 
 ### D27. Nothing on the request path is boxed or dispatched dynamically
 
@@ -380,6 +379,43 @@ closure is in it.
   Calling it after them is a `Config` error from `build()`, not a silent loss of the layers.
 - With layers, a call clones its request once on the way in, since a layer owns the request it
   is given and may change it.
+
+### D29. An error inside the stream is `Server`
+
+Resolves O13. A server that reports a failure inside an open stream, as an error object in a
+chunk or as an `event: error` event, has failed while answering. That is not a malformed stream,
+so it is its own kind, `Server`, in strict and lenient mode alike, with the server's message
+behind `server_message()`. It is not retryable: svir cannot tell a crash that will pass from a
+request the server will refuse again, and part of the answer may already have been delivered. A
+caller who knows its server better reads the message and decides.
+
+An `error` event fails the stream whatever its data is: an error object, an object with a
+message, or plain text.
+
+### D30. A context overflow is recognized by code, type, or message
+
+Resolves O15. Servers agree on no single sign of an overflow, and the application has to know:
+it is the one failure answered by shortening the conversation. So an error the server reports
+is `ContextOverflow` when any of these holds:
+
+- `error.code` or `error.type` is `context_length_exceeded`, `context_window_exceeded`, or
+  `exceed_context_size_error`;
+- the message speaks of the `context length`, the `context size`, or the `context window`, in
+  any letter case.
+
+This applies to the body of a 400, 413, or 422, and to an error inside the stream (D29), which is
+how LM Studio reports an overflow. On any other status the body does not change the kind: a 500
+that mentions the context is still a transient failure.
+
+Matching words is looser than matching a code, on purpose. The lists live in one place
+(`openai/chat/overflow.rs`) and grow as servers are observed. A false match turns one
+non-retryable error into another, and the server's own message is kept either way.
+
+### D31. The answer text is what the server sent
+
+Resolves O16. svir does not trim or otherwise tidy the text. A server that separates reasoning
+itself may start the answer with the line breaks that followed it; a proxy has to relay them, and
+a stored answer has to equal what was streamed. Trimming for display is the caller's choice.
 
 ## Proposed
 
@@ -503,23 +539,11 @@ stands in for its length in tokens, which it never underestimates (but see O5).
 - **O10. Model listing.** Is the non-chat model filter part of svir or of the application?
 - **O12. Answer-changing anomalies in lenient mode.** An unknown finish reason (`content_filter`)
   or content after the finish reason: complete with what was received, or fail?
-- **O13. The kind of an error inside an open stream.** It is a server-side failure, possibly
-  transient, not a malformed stream. Today it maps to `Protocol`, which is not retryable. A
-  separate kind, and is it retryable? It is not always transient: LM Studio reports a prompt
-  longer than the context this way (O15).
 - **O14. Failed tool results.** A `Toolbox` turns a failure into a tool result. Should
   `ToolResult` carry an `is_error` flag? Some APIs have one; Chat Completions would carry it only
   in the text.
-- **O15. A context overflow that carries no code.** `ContextOverflow` is recognized by
-  `error.code` on a 400, 413, or 422. LM Studio reports an overflow inside the stream with only a
-  message, so today it is the in-stream error of O13 with that message. Recognize it by the
-  message text (and llama.cpp's `error.type`), in the stream and in error bodies? Matching text is
-  brittle; not matching leaves the most common local server without the one kind an application
-  acts on by shortening the conversation.
-- **O16. Whitespace the server leaves before the answer.** LM Studio starts the answer with the
-  line breaks that followed the reasoning. svir passes the text on as it came. Trim it in the
-  decoder, or leave it to the caller?
 
 Resolved: O1 (API names and DX) by D13-D18, O2 (`<think>` splitting) by D23, O4 (server error
 messages) by D19, O3 (compatibility retry versus context overflow) by D26, O8 (tool arguments)
-by D18, O11 (assistant content with tool calls) by D24.
+by D18, O11 (assistant content with tool calls) by D24, O13 (errors inside the stream) by D29,
+O15 (an overflow without a code) by D30, O16 (whitespace before the answer) by D31.

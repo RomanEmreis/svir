@@ -31,6 +31,9 @@ pub enum ErrorKind {
     ContextOverflow,
     /// The model server sent a malformed or inconsistent response.
     Protocol,
+    /// The model server reported a failure of its own while answering: an error inside the
+    /// stream. Whether it will pass is not known, so it is not retryable.
+    Server,
     /// The request or the response uses something svir cannot represent.
     Unsupported,
     /// The response exceeded a configured limit.
@@ -59,6 +62,7 @@ impl ErrorKind {
             Self::Authentication => "the model server refused the credentials",
             Self::ContextOverflow => "the request does not fit in the model's context",
             Self::Protocol => "the model server sent a malformed or inconsistent response",
+            Self::Server => "the model server failed while answering",
             Self::Unsupported => "the request or the response uses something svir cannot represent",
             Self::ResponseLimit => "the response exceeded a configured limit",
             Self::Attachment => "an attachment could not be read, or changed since it was recorded",
@@ -231,6 +235,7 @@ mod tests {
             Authentication,
             ContextOverflow,
             Protocol,
+            Server,
             Unsupported,
             ResponseLimit,
             Attachment,

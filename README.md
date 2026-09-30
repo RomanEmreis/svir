@@ -118,6 +118,12 @@ SVIR_MODEL=<model> cargo run --example stream
 - [Conformance suite](tests/conformance/README.md) -- behavior vectors as data, independent of
   the API
 
+## Contributing
+
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[Code of Conduct](CODE_OF_CONDUCT.md). To report a vulnerability, follow
+[SECURITY.md](SECURITY.md) instead of opening an issue.
+
 ## License
 
 Licensed under either of

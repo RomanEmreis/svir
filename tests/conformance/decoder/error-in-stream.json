@@ -1,13 +1,12 @@
 {
-  "description": "An error object inside an open stream.",
+  "description": "An error object inside an open stream: the server failed while answering (D29).",
   "chunks": [
     "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"},\"finish_reason\":null}]}\n\n",
     "data: {\"error\":{\"message\":\"engine died\"}}\n\n"
   ],
   "strides": [1, 3, 8192],
-  "open": ["O13"],
   "expect": {
-    "strict": {"error": "protocol", "partial": {"text": "partial"}},
-    "lenient": {"error": "protocol", "partial": {"text": "partial"}, "message": "engine died"}
+    "strict": {"error": "server", "partial": {"text": "partial"}, "message": "engine died"},
+    "lenient": "same"
   }
 }

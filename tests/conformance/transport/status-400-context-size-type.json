@@ -1,0 +1,13 @@
+{
+  "description": "400 whose error type names a context overflow, as llama.cpp sends it: the code is a number and says nothing (D30).",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 400,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"error\":{\"code\":400,\"message\":\"secret-server-detail\",\"type\":\"exceed_context_size_error\",\"n_prompt_tokens\":9000,\"n_ctx\":8192}}"
+    }
+  ],
+  "calls": [{"expect": {"error": "context_overflow", "retryable": false}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

@@ -1,0 +1,13 @@
+{
+  "description": "LM Studio reports a prompt longer than the context with status 200 and one 'event: error': a context overflow, not a truncated stream (D29, D30).",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 200,
+      "headers": {"content-type": "text/event-stream"},
+      "body": "event: error\ndata: {\"error\":{\"message\":\"The number of tokens to keep from the initial prompt is greater than the context length.\"},\"message\":\"The number of tokens to keep from the initial prompt is greater than the context length.\"}\n\n"
+    }
+  ],
+  "calls": [{"expect": {"error": "context_overflow", "retryable": false, "message": "The number of tokens to keep from the initial prompt is greater than the context length."}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

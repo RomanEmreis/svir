@@ -1,0 +1,21 @@
+{
+  "description": "400 with no telling code or type: the message says the context overflowed, in any letter case (D30).",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 400,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"error\":{\"code\":null,\"type\":\"invalid_request_error\",\"message\":\"This model's maximum Context Length is 8192 tokens.\"}}"
+    }
+  ],
+  "calls": [
+    {
+      "expect": {
+        "error": "context_overflow",
+        "retryable": false,
+        "message": "This model's maximum Context Length is 8192 tokens."
+      }
+    }
+  ],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

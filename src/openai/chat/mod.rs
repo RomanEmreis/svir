@@ -6,6 +6,7 @@
 
 mod decoder;
 mod encoder;
+mod overflow;
 mod sse;
 #[cfg(feature = "client")]
 pub(crate) mod status;

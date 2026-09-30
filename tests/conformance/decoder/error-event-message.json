@@ -6,9 +6,8 @@
     "data: [DONE]\n\n"
   ],
   "strides": [1, 3, 8192],
-  "open": ["O13"],
   "expect": {
-    "strict": {"error": "protocol", "partial": {"text": "partial"}, "message": "engine died"},
+    "strict": {"error": "server", "partial": {"text": "partial"}, "message": "engine died"},
     "lenient": "same"
   }
 }

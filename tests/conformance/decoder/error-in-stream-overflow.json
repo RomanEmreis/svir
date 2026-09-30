@@ -1,0 +1,11 @@
+{
+  "description": "An error object inside the stream whose type names a context overflow is one, whatever its message says (D30).",
+  "chunks": [
+    "data: {\"error\":{\"code\":400,\"type\":\"exceed_context_size_error\",\"message\":\"try increasing it\"}}\n\n"
+  ],
+  "strides": [1, 3, 8192],
+  "expect": {
+    "strict": {"error": "context_overflow", "message": "try increasing it"},
+    "lenient": "same"
+  }
+}

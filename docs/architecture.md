@@ -207,7 +207,7 @@ or a tool call wrong (P8).
 | Usage without `prompt_tokens` or `completion_tokens` | `Protocol` | Usage ignored |
 | Unknown finish reason (for example `content_filter`) | `Unsupported` | Open (O12); `Unsupported` until decided |
 | Content after the finish reason | `Unsupported` | Open (O12); `Unsupported` until decided |
-| Error object inside an open stream, or an `event: error` event | Error, with the server's message (O13) | The same |
+| Error object inside an open stream, or an `event: error` event | `Server`, or `ContextOverflow` when it says so, with the server's message (D29, D30) | The same |
 
 Enforced the same way in both modes (P8):
 
@@ -291,8 +291,8 @@ rejection of a request that carried optional fields triggers one retry without t
 succeeds, the server is remembered as strict and later requests omit those fields from the first
 attempt. If the retry fails too, the original error is reported. The memory lives in a
 cheap-to-clone handle shared by every request to that server. A 400/422 means nothing was
-generated, so this retry is safe. A 400 or 422 whose `error.code` says the context overflowed is
-not about those fields and is reported without the retry (D26).
+generated, so this retry is safe. A 400 or 422 that is a context overflow is not about those
+fields and is reported without the retry (D26).
 
 ### 4.8 Errors
 
@@ -305,8 +305,9 @@ Every failure is a typed kind with a `retryable` flag and an optional retry dela
 | `RateLimited` | yes | HTTP 429 |
 | `TruncatedStream` | yes | Stream ended before a finish reason and `[DONE]` |
 | `Authentication` | no | HTTP 401, 403 |
-| `ContextOverflow` | no | Known overflow codes on 400/413/422; or local admission failed |
+| `ContextOverflow` | no | An overflow told by its code, type, or message, on 400/413/422 or inside the stream (D30); or local admission failed |
 | `Protocol` | no | Malformed or inconsistent stream |
+| `Server` | no | The server reported a failure inside the stream (D29) |
 | `Unsupported` | no | A feature the adapter cannot represent; a success that is not `text/event-stream`; any other status, redirects included |
 | `ResponseLimit` | no | A byte, event, or tool-call limit was reached |
 | `Attachment` | no | An attachment could not be read or changed size since it was recorded (P13) |

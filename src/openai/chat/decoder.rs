@@ -8,7 +8,7 @@ use std::{
 
 use serde_json::{Map, Value};
 
-use super::{sse::Framer, think::ThinkSplitter};
+use super::{overflow, sse::Framer, think::ThinkSplitter};
 use crate::{
     Completion, Error, ErrorKind, Event, FinishReason, Limits, Mode, Reasoning, ReasoningSource,
     Think, Timing, ToolCall, ToolCallDelta, Usage,
@@ -534,13 +534,18 @@ fn unsupported(detail: &'static str) -> Error {
     Error::new(ErrorKind::Unsupported).with_detail(detail)
 }
 
-/// An error the server reported inside an open stream. Its kind is O13.
+/// An error the server reported inside an open stream: a failure of its own (D29), unless it
+/// says that the request did not fit in the context (D30).
 fn server_error(error: &Value) -> Error {
     let message = error
         .get("message")
         .and_then(Value::as_str)
         .or_else(|| error.as_str());
-    let reported = protocol("the server reported an error inside the stream");
+    let reported = if overflow::is_overflow(error) {
+        Error::new(ErrorKind::ContextOverflow).with_detail("reported inside the stream")
+    } else {
+        Error::new(ErrorKind::Server)
+    };
 
     match message.filter(|message| !message.is_empty()) {
         Some(message) => reported.with_server_message(message),
@@ -622,7 +627,7 @@ mod tests {
             .pop()
             .unwrap()
             .unwrap_err();
-        assert_eq!(error.kind(), ErrorKind::Protocol);
+        assert_eq!(error.kind(), ErrorKind::Server);
         assert_eq!(error.server_message(), Some("engine died"));
     }
 
@@ -650,10 +655,28 @@ mod tests {
                 ("event: error\ndata: too long\n\n", Some("too long")),
                 ("event: error\n\n", None),
             ] {
-                let expected = (ErrorKind::Protocol, message.map(str::to_owned));
+                let expected = (ErrorKind::Server, message.map(str::to_owned));
                 assert_eq!(failure(mode, wire), expected, "{mode:?} {wire:?}");
             }
         }
+    }
+
+    #[test]
+    fn an_error_that_speaks_of_the_context_is_an_overflow() {
+        let wire =
+            "event: error\ndata: {\"error\":{\"message\":\"greater than the context length\"}}\n\n";
+        let error = Decoder::lenient()
+            .push(wire.as_bytes())
+            .pop()
+            .unwrap()
+            .unwrap_err();
+
+        assert_eq!(error.kind(), ErrorKind::ContextOverflow);
+        assert!(!error.is_retryable());
+        assert_eq!(
+            error.server_message(),
+            Some("greater than the context length")
+        );
     }
 
     #[test]

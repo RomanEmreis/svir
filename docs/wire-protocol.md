@@ -203,9 +203,13 @@ very end (`done<thi`) is text.
 | 400, 413, 422 | Request rejected. The body is `{"error":{"code":...,"message":...}}` on most servers |
 | other | Not expected from this API |
 
-Context overflow is a 400/413/422 with `error.code` of `context_length_exceeded` or
-`context_window_exceeded`. Servers that do not set a code say it only in the message text, and
-LM Studio says it inside the stream (3.5).
+Servers agree on no single sign of a context overflow:
+
+| Server | How it says it |
+| --- | --- |
+| Servers that follow the OpenAI error schema | 400, 413, or 422 with `error.code` of `context_length_exceeded` or `context_window_exceeded`; the message speaks of the "maximum context length" |
+| llama.cpp | 400 with a numeric `error.code`, `error.type` of `exceed_context_size_error`, and "the request exceeds the available context size" |
+| LM Studio | Status 200 and an `event: error` inside the stream (3.5), with only a message: "...greater than the context length..." |
 
 An upstream `401` in a proxy is ambiguous: it can mean the proxy's own session or the model
 server's key. A proxy has to keep the two apart.

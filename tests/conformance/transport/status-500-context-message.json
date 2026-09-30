@@ -1,0 +1,13 @@
+{
+  "description": "A message about the context means an overflow only on a rejected request: a 500 stays a transient failure (D30).",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 500,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"error\":{\"message\":\"failed to allocate the context window\"}}"
+    }
+  ],
+  "calls": [{"expect": {"error": "transport", "retryable": true}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

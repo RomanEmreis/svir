@@ -9,9 +9,9 @@ on an open decision lists it in `open`.
 
 | Directory | Covers | Status |
 | --- | --- | --- |
-| `decoder/` | SSE framing, deltas, reasoning, tool calls, usage, limits, errors inside the stream, strict and lenient | 49 cases, run by `tests/conformance_decoder.rs` |
+| `decoder/` | SSE framing, deltas, reasoning, tool calls, usage, limits, errors inside the stream, strict and lenient | 50 cases, run by `tests/conformance_decoder.rs` |
 | `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, admission | 22 cases, run by `tests/conformance_encoder.rs` |
-| `transport/` | Authentication, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 42 cases, run by `tests/conformance_transport.rs` |
+| `transport/` | Authentication, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 47 cases, run by `tests/conformance_transport.rs` |
 
 ## Decoder cases
 
@@ -80,7 +80,7 @@ An error:
 
 | Field | Meaning |
 | --- | --- |
-| `error` | The kind: `transport`, `timeout`, `rate_limited`, `truncated_stream`, `authentication`, `context_overflow`, `protocol`, `unsupported`, or `response_limit`. |
+| `error` | The kind: `transport`, `timeout`, `rate_limited`, `truncated_stream`, `authentication`, `context_overflow`, `protocol`, `server`, `unsupported`, or `response_limit`. |
 | `partial` | Text and reasoning deltas delivered before the error, each concatenated. Each field is compared only when present. |
 | `message` | The server's own message. Compared only when present. |
 
