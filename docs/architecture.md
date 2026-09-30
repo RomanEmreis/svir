@@ -222,8 +222,8 @@ Two SSE details are framing, not leniency, and hold in both modes: several `data
 event join with a newline, and both `reasoning_content` and `reasoning` are reasoning. A call ID
 repeated on later pieces of the same call is consistent; one that changes is not (P10).
 
-Limits and their current defaults: 4 MiB of wire bytes per attempt, 256 KiB per SSE event, and 64
-tool calls per response.
+Limits and their current defaults: 64 MiB of wire bytes per attempt (D32), 256 KiB per SSE
+event, and 64 tool calls per response.
 
 ### 4.5 Reasoning
 
@@ -249,8 +249,9 @@ requires a `text/event-stream` response before decoding. Layers wrap the adapter
 The HTTP itself is hyper, behind a seam (D25). `svir::http::Backend` is a trait with one method:
 send an `HttpRequest` (method, URL, headers, and a body of known length as a `BodyStream`) and
 return an `HttpResponse` (status, headers, and the body as a byte stream) once the headers have
-arrived. The built-in backend, `Hyper`, is a pooled hyper client, with rustls when the `tls`
-feature is on; `.http(backend)` replaces it for a proxy, client certificates, or other roots.
+arrived. The built-in backend, `Hyper`, is a pooled hyper client, with rustls when the `tls` or
+`tls-aws-lc` feature is on; `.http(backend)` replaces it for a proxy, client certificates, or
+other roots.
 Everything else sits above the seam and holds for any backend: the idle timeout, status mapping,
 compatibility learning, and decoding.
 
@@ -318,7 +319,7 @@ caller's decision, or the opt-in `Retry` layer's (D16). Error values never conta
 request URLs, or headers. The server's own message is available through
 `error.server_message()`, cut to 4 KiB, and kept out of `Debug` and `Display` (D19). Everything
 else a caller or a layer needs is on the error: `kind()`, `is_retryable()`, `retry_after()`,
-`detail()`, and the chained `source()`.
+`status()` for a response that was not a success (D33), `detail()`, and the chained `source()`.
 
 ## 5. API and composition
 
@@ -475,7 +476,8 @@ async fn ask(models: Dc<Models>, model: String, prompt: String) -> Result<String
 
 One crate, `svir`, with no procedural macros (D14). Without features: types and the codec.
 `client` (default): `Client`, `EventStream`, the HTTP seam, and the hyper and tokio transport.
-`tls` (default): HTTPS through rustls. `schemars` (`Tools::add`), `tracing` (the `Trace` layer),
+`tls` (default): HTTPS through rustls with ring; `tls-aws-lc`: the same with aws-lc-rs (D34).
+`schemars` (`Tools::add`), `tracing` (the `Trace` layer),
 and `testing` (a `MockServer` and scripted event streams for the caller's own tests, not yet
 written) are opt-in.
 

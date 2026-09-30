@@ -55,9 +55,13 @@ impl ThinkSplitter {
 }
 
 /// The length of the longest suffix of `text` that could begin `marker`, on a character boundary.
+///
+/// The suffix can be the whole of `text`: a delta may be nothing but the start of a marker. It is
+/// always shorter than `marker`, since a whole marker was found before this is asked.
 fn partial_tail(text: &str, marker: &str) -> usize {
-    let max = marker.len().min(text.len());
-    (1..max)
+    let max = (marker.len() - 1).min(text.len());
+
+    (1..=max)
         .rev()
         .find(|k| text.is_char_boundary(text.len() - k) && text.ends_with(&marker[..*k]))
         .unwrap_or(0)
@@ -83,15 +87,36 @@ mod tests {
 
     #[test]
     fn a_marker_cut_anywhere_is_still_a_marker() {
-        let whole = "a<think>b</think>c";
-        for at in 0..=whole.len() {
-            let (head, tail) = whole.split_at(at);
-            assert_eq!(
-                split(&[head, tail]),
-                ("ac".into(), "b".into()),
-                "cut at {at}"
-            );
+        // Three pieces, so that a piece can be nothing but part of a marker, with nothing of the
+        // text or the reasoning around it.
+        for (whole, expected) in [
+            ("a<think>b</think>c", ("ac", "b")),
+            ("<think>b</think>c", ("c", "b")),
+            ("<think></think>c", ("c", "")),
+        ] {
+            for first in 0..=whole.len() {
+                for second in first..=whole.len() {
+                    let pieces = [&whole[..first], &whole[first..second], &whole[second..]];
+                    let expected = (expected.0.to_owned(), expected.1.to_owned());
+                    assert_eq!(split(&pieces), expected, "{pieces:?}");
+                }
+            }
         }
+    }
+
+    #[test]
+    fn a_piece_that_is_only_the_start_of_a_marker_is_held_back() {
+        // What can no longer become a marker goes out; only the tail that still can is held.
+        let mut splitter = ThinkSplitter::default();
+        assert!(splitter.push("<thi").is_empty());
+        assert_eq!(splitter.push("<"), [(false, "<thi".to_owned())]);
+        assert_eq!(splitter.flush(), Some((false, "<".to_owned())));
+
+        let mut splitter = ThinkSplitter::default();
+        assert_eq!(splitter.push("<think>hm"), [(true, "hm".to_owned())]);
+        assert!(splitter.push("</").is_empty());
+        assert!(splitter.push("think>").is_empty());
+        assert_eq!(splitter.push("Four."), [(false, "Four.".to_owned())]);
     }
 
     #[test]

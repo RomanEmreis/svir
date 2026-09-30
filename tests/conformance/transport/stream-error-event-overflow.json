@@ -8,6 +8,6 @@
       "body": "event: error\ndata: {\"error\":{\"message\":\"The number of tokens to keep from the initial prompt is greater than the context length.\"},\"message\":\"The number of tokens to keep from the initial prompt is greater than the context length.\"}\n\n"
     }
   ],
-  "calls": [{"expect": {"error": "context_overflow", "retryable": false, "message": "The number of tokens to keep from the initial prompt is greater than the context length."}}],
+  "calls": [{"expect": {"error": "context_overflow", "retryable": false, "status": null, "message": "The number of tokens to keep from the initial prompt is greater than the context length."}}],
   "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
 }

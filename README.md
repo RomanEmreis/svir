@@ -3,7 +3,7 @@
 A small, composable Rust SDK for talking to large language models: the wire protocol between your
 application and a model server, and nothing it does not need.
 
-[![latest](https://img.shields.io/badge/latest-0.1.0-blue)](https://crates.io/crates/svir)
+[![latest](https://img.shields.io/badge/latest-0.1.1-blue)](https://crates.io/crates/svir)
 [![rustc](https://img.shields.io/badge/rustc-1.85+-964B00)](https://releases.rs/docs/1.85.0/)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-violet.svg)](#license)
 [![CI](https://github.com/RomanEmreis/svir/actions/workflows/rust.yml/badge.svg)](https://github.com/RomanEmreis/svir/actions/workflows/rust.yml)
@@ -130,6 +130,8 @@ SVIR_MODEL=<model> cargo run --example stream
 - [Roadmap](docs/roadmap.md) -- order of work and what is left to write
 - [Conformance suite](tests/conformance/README.md) -- behavior vectors as data, independent of
   the API
+- [Agent Skill](skill/svir/README.md) -- svir for coding agents: the API, its traps, and code
+  that compiles
 
 ## Contributing
 

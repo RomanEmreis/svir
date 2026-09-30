@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.1.1
+
+### Added
+
+* **`Error::status()`**: the HTTP status of a response that was not a
+  success, for a proxy that passes the upstream status on. `None` for every
+  other failure, including an error inside a stream that began with `200`.
+* **The `tls-aws-lc` feature**: HTTPS with the aws-lc-rs crypto provider in
+  place of ring. A build that already has aws-lc-rs can take
+  `default-features = false, features = ["client", "tls-aws-lc"]` and compile
+  one provider only. With two providers compiled in, rustls has no default
+  one, and other code that relies on it (`ClientConfig::builder()`) panics.
+
+### Changed
+
+* **The default wire limit is 64 MiB**, up from 4 MiB. A streamed answer
+  spends a few hundred bytes a token on the wire, so 4 MiB cut off an answer
+  after about 16,000 tokens, which a reasoning model can pass. The decoder
+  keeps the answer, not the wire bytes.
+
+### Fixed
+
+* **Inline `<think>` tags are split out when a delta is nothing but part of
+  one.** A delta such as `<thi` or `</`, with no text around it, was passed on
+  as answer text instead of being held until the next delta decided it. The
+  tags then stayed in the answer (`<thi`, `nk>hm</think>`), or the rest of the
+  answer went to reasoning (`<think>hm`, `</`, `think>`). Models whose tokenizer
+  has no single token for the tag send it this way, on servers without a
+  reasoning parser. Reasoning from `reasoning_content` or `reasoning` was not
+  affected.
+
 ## 0.1.0
 
 The first release: OpenAI-compatible Chat Completions streaming, as served by LM Studio,

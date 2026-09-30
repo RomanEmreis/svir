@@ -8,6 +8,6 @@
       "body": "{\"error\":{\"code\":\"invalid_api_key\",\"message\":\"secret-server-detail\"}}"
     }
   ],
-  "calls": [{"expect": {"error": "authentication", "retryable": false}}],
+  "calls": [{"expect": {"error": "authentication", "retryable": false, "status": 401}}],
   "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
 }

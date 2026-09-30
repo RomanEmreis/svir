@@ -2,6 +2,6 @@
   "description": "An unexpected status is unsupported.",
   "config": {"base_url": "{server}/v1"},
   "server": [{"status": 404, "headers": {"content-type": "text/plain"}, "body": "Model not loaded"}],
-  "calls": [{"expect": {"error": "unsupported", "retryable": false}}],
+  "calls": [{"expect": {"error": "unsupported", "retryable": false, "status": 404}}],
   "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
 }

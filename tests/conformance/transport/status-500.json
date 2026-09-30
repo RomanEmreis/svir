@@ -8,6 +8,6 @@
       "body": "{\"error\":{\"code\":\"unavailable\",\"message\":\"secret-server-detail\"}}"
     }
   ],
-  "calls": [{"expect": {"error": "transport", "retryable": true}}],
+  "calls": [{"expect": {"error": "transport", "retryable": true, "status": 500}}],
   "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
 }

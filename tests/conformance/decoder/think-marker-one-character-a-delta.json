@@ -1,0 +1,47 @@
+{
+  "description": "Both markers sent one character per delta: every delta is a partial marker on its own.",
+  "chunks": [
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"<\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"t\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"h\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"i\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"n\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"k\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\">\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hm\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"<\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"/\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"t\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"h\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"i\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"n\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"k\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\">\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Four.\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+    "data: [DONE]\n\n"
+  ],
+  "strides": [
+    1,
+    3,
+    8192
+  ],
+  "options": {
+    "think": "split"
+  },
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "stop",
+        "text": "Four.",
+        "reasoning": [
+          {
+            "source": "think",
+            "text": "hm"
+          }
+        ]
+      }
+    },
+    "lenient": "same"
+  }
+}

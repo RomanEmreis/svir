@@ -42,6 +42,8 @@ jobs:
         run: cargo clippy --locked --no-default-features --all-targets -- -D warnings
       - name: Run Clippy on the client without TLS
         run: cargo clippy --locked --no-default-features --features client --all-targets -- -D warnings
+      - name: Run Clippy with aws-lc-rs in place of ring
+        run: cargo clippy --locked --no-default-features --features tls-aws-lc --all-targets -- -D warnings
       - name: Run Clippy with all features
         run: cargo clippy --locked --all-features --all-targets -- -D warnings
 
@@ -116,6 +118,8 @@ jobs:
         run: cargo test --locked --no-default-features
       - name: Run tests of the client without TLS
         run: cargo test --locked --no-default-features --features client
+      - name: Run tests with aws-lc-rs in place of ring
+        run: cargo test --locked --no-default-features --features tls-aws-lc
 
   cross_platform:
     needs: [clippy_check, doc_check]
@@ -132,6 +136,12 @@ jobs:
     # Every other job runs on Linux. What differs elsewhere is what touches the system:
     # attachments read from disk, paths, sockets, and the line endings of the fixtures,
     # which `.gitattributes` keeps at LF.
+    env:
+      # `--all-features` builds aws-lc-sys, which assembles with NASM on Windows, and the runner
+      # image is not guaranteed to carry one. Its prebuilt objects need no assembler; where NASM
+      # is present it is used instead. Ignored on macOS.
+      AWS_LC_SYS_PREBUILT_NASM: 1
+
     steps:
       - uses: actions/checkout@v4
       - name: Run Clippy

@@ -1,6 +1,6 @@
 [package]
 name = "svir"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.85"
 description = "A small, composable SDK for talking to large language models"
@@ -26,16 +26,19 @@ schemars = ["dep:schemars"]
 # The `Trace` layer.
 tracing = ["client", "dep:tracing"]
 # HTTPS, through rustls with the ring provider and the webpki roots.
-tls = ["client", "dep:hyper-rustls", "dep:rustls", "hyper/http2", "hyper-util/http2"]
+tls = ["client", "dep:hyper-rustls", "dep:rustls", "hyper-rustls/ring", "rustls/ring", "hyper/http2", "hyper-util/http2"]
+# HTTPS with the aws-lc-rs provider in place of ring, for a build that has it already. With both
+# on, aws-lc-rs is used; turning the default features off keeps ring out of the build.
+tls-aws-lc = ["client", "dep:hyper-rustls", "dep:rustls", "hyper-rustls/aws-lc-rs", "rustls/aws_lc_rs", "hyper/http2", "hyper-util/http2"]
 
 [dependencies]
 base64 = "0.22"
 bytes = "1"
 futures-core = { version = "0.3", default-features = false, features = ["std"], optional = true }
 hyper = { version = "1", features = ["client", "http1"], optional = true }
-hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "http2", "ring", "tls12", "webpki-roots"], optional = true }
+hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "http2", "tls12", "webpki-roots"], optional = true }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"], optional = true }
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"], optional = true }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12"], optional = true }
 schemars = { version = "1", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

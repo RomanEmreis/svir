@@ -146,6 +146,7 @@ Everyday imports come from `svir::prelude`.
 | none | Types, the codec, and tool sets (`Toolbox`, `Tools`); attachments in memory only |
 | `client` (default) | `Client`, `EventStream`, layers, the hyper and tokio transport (D25), attachments from disk |
 | `tls` (default) | HTTPS: rustls with the ring provider and the webpki roots |
+| `tls-aws-lc` | HTTPS with the aws-lc-rs provider in place of ring (D34) |
 | `schemars` | `Tools::add`: tool input schemas derived from the types of handlers' arguments |
 | `tracing` | The `Trace` layer |
 | `testing` | `MockServer` (the conformance suite's scripted loopback server) and scripted event streams |
@@ -313,7 +314,8 @@ dependency tree and the clean build are about a third of the alternative's (46 c
 with TLS), and the TLS build needs no cmake.
 
 - `client`: HTTP/1.1. `tls` (default): HTTPS through rustls with the ring provider and the webpki
-  roots, and HTTP/2 by ALPN. Without `tls`, an `https` URL is a `Config` error.
+  roots, and HTTP/2 by ALPN; `tls-aws-lc` is the same with aws-lc-rs (D34). Without either, an
+  `https` URL is a `Config` error.
 - What hyper does not give, a caller brings: `svir::http::Backend` is the little of HTTP svir
   uses (a request with a body of known length in, a status, headers, and a byte stream out), and
   `.http(backend)` on the client builder replaces the built-in transport. A proxy, client
@@ -417,7 +419,41 @@ Resolves O16. svir does not trim or otherwise tidy the text. A server that separ
 itself may start the answer with the line breaks that followed it; a proxy has to relay them, and
 a stored answer has to equal what was streamed. Trimming for display is the caller's choice.
 
-## Proposed
+### D32. The default wire limit is 64 MiB
+
+The wire limit bounds the bytes of one response as they arrive, and a Chat Completions stream
+spends a few hundred of them on every token: each event repeats the ID, the model, and the
+choice around a delta of a few characters. Observed against a local server, that is about 250
+bytes a token, so the first default, 4 MiB, cut off an answer after some 16,000 tokens. A
+reasoning model passes that on a hard question, and the first application built on svir met it
+at once.
+
+The limit is there to stop a server that never ends, not to hold memory down: the decoder keeps
+the answer, not the wire bytes, and the answer is a small fraction of them. 64 MiB is about a
+quarter of a million tokens. The limits on one event (256 KiB) and on tool calls (64) are
+unchanged.
+
+### D33. An error carries the HTTP status
+
+`error.status()` is the status of a response that was not a success, and `None` for every other
+failure: a connection that could not be made, a timeout, an error inside a stream that began with
+`200`. It is for a proxy that answers with the upstream's status. Everything else acts on the
+kind, which means the same whatever the server; the status is kept beside it, not in place of it.
+
+### D34. The crypto provider is a feature, and always passed explicitly
+
+rustls has two providers, ring and aws-lc-rs, and picks a process default only when exactly one
+of them is compiled in. A build that has both, because another dependency brings aws-lc-rs, has
+no default, and any code that calls `ClientConfig::builder()` without a provider panics. svir
+passed its provider explicitly from the start, but its `tls` feature compiled ring in, and that
+alone took the default away from the rest of the build.
+
+- `tls` (default) keeps ring: it builds without a C toolchain on every platform.
+- `tls-aws-lc` uses aws-lc-rs instead. A build that has aws-lc-rs already turns the default
+  features off and takes `client` and `tls-aws-lc`, so one provider is compiled in and the
+  default is back. With both features on, aws-lc-rs is used.
+- Whichever it is, svir passes it to rustls explicitly and never depends on the default.
+
 
 ### P1. Edition 2024; MSRV 1.85
 
