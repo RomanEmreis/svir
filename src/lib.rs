@@ -5,8 +5,11 @@
 //! sit on top, opt-in. There is no agent loop: feeding tool results back is a few lines of the
 //! caller's code.
 //!
-//! So far this crate has the types, the errors, and the Chat Completions codec
-//! ([`openai::chat::Encoder`] and [`openai::chat::Decoder`]); the client follows.
+//! With the `client` feature, `Client` sends a [`Request`] to an OpenAI-compatible server and
+//! returns the answer whole or as an `EventStream`. The codec under it,
+//! [`openai::chat::Encoder`] and [`openai::chat::Decoder`], works on its own with any transport.
+//! Layers (`svir::layer`) wrap every call; [`Toolbox`] and [`Tools`] describe tools to a model
+//! and answer its calls.
 //!
 //! ```
 //! use svir::prelude::*;
@@ -24,14 +27,29 @@
 //! assert_eq!(request.messages[0].parts.len(), 4);
 //! ```
 
+pub mod body;
 mod decode;
 mod error;
 mod message;
 mod request;
 mod response;
 mod tool;
+mod tools;
 
+#[cfg(feature = "client")]
+mod client;
+#[cfg(feature = "client")]
+pub mod http;
+#[cfg(feature = "client")]
+pub mod layer;
 pub mod openai;
+#[cfg(feature = "client")]
+mod stream;
+
+#[cfg(feature = "client")]
+pub use client::{Client, ClientBuilder, Model};
+#[cfg(feature = "client")]
+pub use stream::{EventStream, RawStream};
 
 pub use decode::{Limits, Mode, Think};
 pub use error::{Error, ErrorKind, Result};
@@ -41,11 +59,14 @@ pub use response::{
     Completion, Event, FinishReason, Reasoning, ReasoningSource, Timing, ToolCallDelta, Usage,
 };
 pub use tool::{Tool, ToolCall};
+pub use tools::{ToolOutput, Toolbox, Tools};
 
 /// The everyday imports.
 pub mod prelude {
+    #[cfg(feature = "client")]
+    pub use crate::{Client, EventStream};
     pub use crate::{
         Completion, Effort, Error, ErrorKind, Event, FinishReason, Image, Message, Part, Reasoning,
-        Request, Role, TextFile, Tool, ToolCall, ToolResult, Usage,
+        Request, Role, TextFile, Tool, ToolCall, ToolResult, Toolbox, Tools, Usage,
     };
 }

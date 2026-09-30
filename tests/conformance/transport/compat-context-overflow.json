@@ -1,5 +1,5 @@
 {
-  "description": "A context overflow on a request with optional fields.",
+  "description": "A context overflow is not about the optional fields: no retry without them (D26).",
   "config": {"base_url": "{server}/v1"},
   "server": [
     {
@@ -24,6 +24,11 @@
       "expect": {"error": "context_overflow", "retryable": false}
     }
   ],
-  "expect_requests": {"open": "O3"},
-  "open": ["O3"]
+  "expect_requests": [
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "body_includes": {"reasoning_effort": "low", "stream_options": {"include_usage": true}}
+    }
+  ]
 }

@@ -19,6 +19,5 @@
       "path": "/v1/chat/completions",
       "body_includes": {"reasoning_effort": "low", "stream_options": {"include_usage": true}}
     }
-  ],
-  "open": ["O4"]
+  ]
 }

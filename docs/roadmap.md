@@ -15,13 +15,21 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
    attachments from memory and from disk, tools, tool calls and results, reasoning sent back, and
    admission. All 22 encoder cases pass in `tests/conformance_encoder.rs`, at every block size
    and from memory.
-5. **Transport and compatibility.** HTTP, authentication, status mapping, timeouts,
-   cancellation, optional-field learning, model listing.
-6. **First consumer.** A chat backend moves over; its existing tests must pass unchanged. An agent
+5. **Transport and compatibility.** Done: `Client` and its builder, `EventStream`, the HTTP seam
+   with the hyper backend, authentication, status mapping, timeouts, cancellation, optional-field
+   learning, and model listing. All 42 transport cases pass in `tests/conformance_transport.rs`;
+   the `Retry-After` date case (O7) is pending. HTTPS is not yet exercised against a real server.
+6. **Layers.** Done: `svir::layer::{Layer, Next}`, `.layer(..)` and `.wrap(..)`, `Retry`,
+   `Timeout`, and `Trace`, with the stream methods they use (D28). Tested against a scripted
+   backend in `tests/layers.rs`.
+7. **Tools.** Done: the `Toolbox` trait and the `Tools` registry, with schemas from types behind
+   `schemars`. `tests/tool_loop.rs` runs the loop that feeds results back. The MCP bridge is
+   neva's work, behind its `svir` feature (D18).
+8. **Examples and live runs.** Examples for each level of use, and smoke runs against a real
+   model server: a whole answer, a stream, a tool call, an image.
+9. **First consumer.** A chat backend moves over; its existing tests must pass unchanged. An agent
    engine follows when convenient.
-7. **Layers.** The layer trait, `wrap`, `Retry`, `Timeout`, and `Trace`.
-8. **Tools.** The `Toolbox` trait, the `Tools` registry, and schemars schemas. The MCP bridge
-   is neva's work, behind its `svir` feature (D18).
+10. **`testing`.** The scripted server and scripted event streams, published for callers' tests.
 
 ## Conformance suite
 

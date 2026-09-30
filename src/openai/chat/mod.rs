@@ -4,13 +4,13 @@
 //! its first byte. [`Decoder`] reads the server's answer stream: bytes in,
 //! [`Event`](crate::Event)s out, no I/O.
 
-mod body;
 mod decoder;
 mod encoder;
-mod escape;
 mod sse;
+#[cfg(feature = "client")]
+pub(crate) mod status;
 mod think;
 
-pub use body::Body;
+pub use crate::body::Body;
 pub use decoder::Decoder;
 pub use encoder::Encoder;

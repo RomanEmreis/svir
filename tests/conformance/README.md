@@ -11,7 +11,7 @@ on an open decision lists it in `open`.
 | --- | --- | --- |
 | `decoder/` | SSE framing, deltas, reasoning, tool calls, usage, limits, strict and lenient | 46 cases, run by `tests/conformance_decoder.rs` |
 | `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, admission | 22 cases, run by `tests/conformance_encoder.rs` |
-| `transport/` | Authentication, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 42 cases |
+| `transport/` | Authentication, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 42 cases, run by `tests/conformance_transport.rs` |
 
 ## Decoder cases
 
@@ -205,7 +205,9 @@ For every case, whatever it lists:
   never `transfer-encoding: chunked`;
 - the API key never appears in the `Debug` or `Display` output of an error, an event, or the
   configuration;
-- the stream is decoded in strict mode.
+- the stream is decoded in strict mode;
+- the client's default of asking for usage is off, so a request carries an optional field only
+  when the notation sets it.
 
 ## Conventions
 

@@ -92,8 +92,9 @@ Errors are typed kinds with a `retryable` flag and an optional retry delay. See
 Resolves O1. Shown whole in [architecture.md](architecture.md#5-api-and-composition).
 
 **Client.** One `Client` type, not generic over the wire API, so the API can be chosen from
-configuration at run time and a client stored without a type parameter. A constructor per wire
-API returns a builder:
+configuration at run time. It is generic over the HTTP backend, `Client<B = Hyper>` (D27): with
+the built-in backend it is written `Client`, with no parameter. A constructor per wire API returns
+a builder:
 
 - `Client::openai(url)` for OpenAI-compatible servers. The URL is required: compatible servers
   live anywhere.
@@ -106,8 +107,9 @@ parts to a message.
 
 **Calls.** `client.complete(request)` returns one `Completion`; it collects a single answer and is
 not a loop. `client.stream(request)` returns an `EventStream`: a `Stream<Item = Result<Event,
-Error>>` that is `Send + 'static`, so it can be moved into a spawned task. `client.list_models()`
-lists models. Calls accept a `Request` or a `&Request`.
+Error>>` that is `Send + Unpin + 'static`, so it can be moved into a spawned task, and that has its
+own `next()`, so reading it needs no extension trait. `client.list_models()` lists models. Calls
+accept a `Request` or a `&Request`.
 
 **Requests.** `Request::new(model)`, then:
 
@@ -141,22 +143,24 @@ Everyday imports come from `svir::prelude`.
 
 | Feature | Adds |
 | --- | --- |
-| none | Types and the codec; attachments in memory only |
-| `client` (default) | `Client`, `EventStream`, the reqwest 0.13 and tokio transport, attachments from disk |
-| `schemars` | Tool input schemas derived from types |
+| none | Types, the codec, and tool sets (`Toolbox`, `Tools`); attachments in memory only |
+| `client` (default) | `Client`, `EventStream`, layers, the hyper and tokio transport (D25), attachments from disk |
+| `tls` (default) | HTTPS: rustls with the ring provider and the webpki roots |
+| `schemars` | `Tools::add`: tool input schemas derived from the types of handlers' arguments |
 | `tracing` | The `Trace` layer |
 | `testing` | `MockServer` (the conformance suite's scripted loopback server) and scripted event streams |
 
 A crate family is for later, when a second wire API or a heavy optional part justifies it.
 
-*Revised 2026-09-30: `svir-macros` and the `macros` feature were dropped with `#[tool]`.*
+*Revised 2026-09-30: `svir-macros` and the `macros` feature were dropped with `#[tool]`. Revised
+2026-09-30: the transport is hyper, not reqwest, and `tls` is its own feature (D25).*
 
 ### D15. Layers and middleware
 
 A client is a stack of layers around the adapter. A layer wraps the provider-neutral call,
 `Request -> Result<EventStream, Error>`, not HTTP, so the same layer works for every wire API.
 Status mapping and compatibility learning sit below the layers, in the adapter; HTTP-level
-settings go through a caller-supplied reqwest client.
+settings go through a caller-supplied HTTP backend (D25).
 
 - `.layer(L)` adds a reusable layer; `.wrap(|req, next| async move { ... next.run(req).await })`
   adds a closure, in the style of volga's middleware.
@@ -176,7 +180,14 @@ budget and journal must not have them happen underneath it. The `Retry` layer ad
 - `Retry::transient(n)` retries retryable kinds, honoring `Retry-After`, with backoff.
 
 Neither retries once an event has been delivered, or the caller would see the same text twice.
-The compatibility retry (D11) stays in the adapter: nothing was generated.
+In practice a retry covers a call that failed before the response started: a connection that could
+not be made, a timeout waiting for it, or an error status. A failure inside the stream is never
+retried, even one before its first event. The compatibility retry (D11) stays in the adapter:
+nothing was generated.
+
+A retry waits as long as the server asked (`Retry-After`), or else 500 ms, doubling each time
+(`.backoff(..)` sets the start), and never more than 30 seconds. "Never reached the server" is a
+mark on the error, `error.is_unsent()`, which a backend sets for a connection it could not make.
 
 ### D17. API keys
 
@@ -205,7 +216,8 @@ pub trait Toolbox {
 ```
 
 `Request::tools(&toolbox)` takes the descriptors from it, and `toolbox.call(&call)` answers one
-call. Feeding the answers back to the model is the caller's (D6).
+call. `toolbox.call_all(&calls)`, provided by the trait, answers several in order. Feeding the
+answers back to the model is the caller's (D6).
 
 **`Tools`.** A plain registry for callers without MCP, built explicitly and never from a global
 registry, since different requests and agents use different tool sets:
@@ -215,10 +227,18 @@ let tools = Tools::new()
     .add("lookup", "Look up a value.", |args: Lookup| async move { lookup(args.value) });
 ```
 
-Arguments are deserialized with serde; the input schema comes from the type with the `schemars`
-feature, or is given explicitly. `tools.call(&call)` validates the arguments and runs one handler;
-a failure becomes a tool result for the model, not an error of the request. `call.parse::<T>()`
-parses raw arguments for callers without a registry. Resolves O8.
+`add(name, description, handler)` derives the input schema from the type of the handler's
+arguments and needs the `schemars` feature; `add_tool(tool, handler)` takes a `Tool` that carries
+its own schema and is always there. A tool added under a name already registered replaces the
+earlier one.
+
+Validating the arguments is deserializing them into the handler's type with serde: arguments that
+do not fit never reach the handler. There is no separate JSON Schema validator, which would be a
+heavy dependency for what the type already says. `tools.call(&call)` runs one handler; a failure
+(an unknown tool, arguments that do not fit, an `Err` from the handler) becomes a tool result for
+the model, `error: <what went wrong>`, not an error of the request (but see O14). A handler
+returns a string, a JSON value, or a `Result` of either. `call.parse::<T>()` parses raw arguments
+for callers without a registry. Resolves O8.
 
 **The MCP bridge lives in neva**, behind a `svir` feature, and implements `Toolbox` twice:
 
@@ -252,14 +272,15 @@ journals by accident.
 
 ### D20. Raw passthrough for proxies
 
-`client.send(request)` returns the server's bytes unchanged, after status mapping and compatibility
-handling; a `Decoder` can read them on the way past. A proxy that relays the stream to a browser
+`client.send(request)` returns the server's bytes unchanged, as a `RawStream`, after status mapping
+and compatibility handling; a `Decoder` can read them on the way past. A proxy that relays the stream to a browser
 keeps its wire format. Whether a given proxy should relay svir events instead is its own choice.
 
 ### D21. Usage is requested by default
 
 `include_usage` is on unless the client or the request turns it off. Nearly every caller wants
-usage, and compatibility learning (D11) drops it on servers that reject it.
+usage, and compatibility learning (D11) drops it on servers that reject it. The default lives in
+the client: the `Encoder` on its own sends the field only when asked.
 
 ### D22. Public types are `#[non_exhaustive]` and serializable
 
@@ -282,6 +303,83 @@ context. This is a documented rule, not a silent loss.
 
 Resolves O11. `"content": ""`, not `null`. The chat templates of many local models join `content`
 as a string and fail on `null`, while an empty string is accepted everywhere.
+
+### D25. The transport is hyper, behind a seam
+
+The built-in transport is hyper with hyper-util's pooled client, not a full HTTP client library.
+svir needs one POST and one GET, and P4 wants off nearly everything such a library adds:
+redirects, proxy discovery, retries. hyper simply lacks them. Measured on a minimal program, the
+dependency tree and the clean build are about a third of the alternative's (46 crates against 89
+with TLS), and the TLS build needs no cmake.
+
+- `client`: HTTP/1.1. `tls` (default): HTTPS through rustls with the ring provider and the webpki
+  roots, and HTTP/2 by ALPN. Without `tls`, an `https` URL is a `Config` error.
+- What hyper does not give, a caller brings: `svir::http::Backend` is the little of HTTP svir
+  uses (a request with a body of known length in, a status, headers, and a byte stream out), and
+  `.http(backend)` on the client builder replaces the built-in transport. A proxy, client
+  certificates, or other roots are an implementation of that trait over a client that has them.
+  The seam is static (D27).
+- Timeouts, status mapping, compatibility learning, and decoding sit above the seam, so they hold
+  for any backend.
+- Host names are ASCII: there is no IDNA conversion.
+
+### D26. No compatibility retry for a context overflow
+
+Resolves O3. A 400 or 422 whose `error.code` says the context overflowed is not about the optional
+fields, so it is reported at once, without the lean retry of D11. A server that reports an
+overflow only in its message text still gets the retry, which then fails, and the original error
+is reported.
+
+### D27. Nothing on the request path is boxed or dispatched dynamically
+
+The types between a request and its answer have names, and the client is generic over its
+backend:
+
+- `Backend` has an associated `Body` type, the response's bytes, and
+  `fn send(&self, request) -> impl Future<..> + Send`. An implementation writes an `async fn`; no
+  future is boxed. One whose HTTP client gives a stream it cannot name uses the `BoxBody` alias
+  for its `Body`, and pays for that itself.
+- `Client<B = Hyper>`, `EventStream<B = Hyper>`, and `RawStream<B = Hyper>`. The default keeps
+  the parameter out of sight for everyone on the built-in backend.
+- The streams are state machines written by hand, with `poll_next`: `EventStream`, `RawStream`
+  (the idle timeout), `HyperBody` (the response body), and `BodyStream` (the request body,
+  reading attachments from disk).
+- The one allocation left is the idle timer, a `Pin<Box<Sleep>>`: a box, not a trait object. It
+  is what keeps the streams `Unpin`, so `stream.next().await` needs no pinning by the caller.
+
+This buys no measurable speed: a request costs a network round trip and a model's generation. It
+buys a request path with no hidden indirection, and backends that are plain `async fn`s.
+
+Layers (D15) are a separate matter. A closure passed to `wrap` has a type no one can write, so a
+client with layers needs its types erased somewhere to be stored in a struct. D28 decides where,
+and leaves the path without layers as it is here.
+
+*Revises D13 (the client was not generic) and D25 (the seam was a trait object), 2026-09-30.*
+
+### D28. Layers are erased at their boundary, and shape the stream through its own methods
+
+A client has the same type whatever its layers: `Client<B>`, storable in a struct. That is worth
+more than a static stack, whose type grows with every layer and cannot be written at all once a
+closure is in it.
+
+- A layer is `Layer<B>`: `fn call(&self, request: Request, next: Next<B>) -> impl Future<..>`.
+  An implementation writes an `async fn`. The client keeps its layers as trait objects and boxes
+  one future per layer per request. A client without layers takes the path of D27 and boxes
+  nothing.
+- `Next<B>` is the rest of the stack. It owns what it needs, so a closure passed to `wrap` has no
+  lifetimes to name, and it is cheap to clone, so `Retry` can run it again.
+- A layer cannot change the type of the stream it passes on, so `EventStream` has the methods a
+  layer needs: `first_token_by(deadline)`, `complete_by(deadline)`, `idle_timeout(limit)`, and
+  `inspect(|item| ..)`, which watches every item without changing it. The timers and the
+  inspectors are allocated only when a layer asks for them.
+- "First token" is anything of the answer: text, reasoning, or a piece of a tool call. An answer
+  that opens with a tool call has started.
+- Layers work on events. `client.send()`, which returns raw bytes, and `client.list_models()` do
+  not pass through them.
+- `.http(backend)` comes before the layers, which are tied to the backend they were added for.
+  Calling it after them is a `Config` error from `build()`, not a silent loss of the layers.
+- With layers, a call clones its request once on the way in, since a layer owns the request it
+  is given and may change it.
 
 ## Proposed
 
@@ -306,11 +404,18 @@ is sent.
 
 ### P4. Hardened transport defaults
 
-No redirects, no automatic retries, no environment proxy discovery, a connect timeout capped at 10
-seconds, and an idle read timeout between bytes; first-token and total limits are `Timeout` layers
-(D15), so a long generation is not cut off by a request-wide default. `text/event-stream`
-required. Plain HTTP only on loopback (`127.0.0.1`, `localhost`, `[::1]`) unless the caller opts
-in; a LAN model server is a legitimate reason. A caller can supply its own client.
+No redirects, no retries of a request that reached the server, no environment proxy discovery.
+Connecting takes at most 10 seconds. The server may send nothing for at most 5 minutes, before
+the response headers and between pieces of the body; both are settable, and the idle timeout can
+be turned off. It is generous because a local model can take minutes over a long prompt;
+first-token and total limits are `Timeout` layers (D15). `text/event-stream` required. Plain HTTP
+only on loopback (`localhost` or a loopback address) unless the caller opts in with
+`.allow_http()`; a LAN model server is a legitimate reason. A caller can supply its own HTTP
+backend (D25).
+
+An error response's body is read for the server's message (D19), up to 64 KiB. It is waited for
+only briefly, 300 ms, unless the kind of the error depends on it (400, 413, 422): an error is not
+held up by a body that never comes.
 
 The base URL is accepted with or without `/v1` and trailing slashes, since both habits are common.
 A base URL with credentials, a query, or a fragment is refused.
@@ -388,9 +493,6 @@ stands in for its length in tokens, which it never underestimates (but see O5).
 
 ## Open
 
-- **O3. Compatibility retry versus context overflow.** Today any 400/422 on a request with optional
-  fields is retried once without them, including a context overflow, which cannot succeed. Skip the
-  retry when `error.code` identifies an overflow? Servers that report it only in text remain.
 - **O5. Admission for images.** Counting base64 bytes as tokens is conservative for text but
   overestimates images by orders of magnitude.
 - **O6. Other wire APIs.** The client shape is settled (D13). Open: which APIs (OpenAI Responses,
@@ -409,4 +511,5 @@ stands in for its length in tokens, which it never underestimates (but see O5).
   in the text.
 
 Resolved: O1 (API names and DX) by D13-D18, O2 (`<think>` splitting) by D23, O4 (server error
-messages) by D19, O8 (tool arguments) by D18, O11 (assistant content with tool calls) by D24.
+messages) by D19, O3 (compatibility retry versus context overflow) by D26, O8 (tool arguments)
+by D18, O11 (assistant content with tool calls) by D24.

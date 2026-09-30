@@ -6,7 +6,7 @@
 //! before the file is sent.
 
 /// How many bytes `bytes` take once escaped into a JSON string.
-pub(super) fn escaped_len(bytes: &[u8]) -> u64 {
+pub(crate) fn escaped_len(bytes: &[u8]) -> u64 {
     bytes.iter().map(|&byte| escaped_byte_len(byte)).sum()
 }
 
@@ -19,7 +19,7 @@ fn escaped_byte_len(byte: u8) -> u64 {
 }
 
 /// Appends `bytes`, escaped for the inside of a JSON string, exactly as `serde_json` escapes.
-pub(super) fn escape_into(bytes: &[u8], out: &mut Vec<u8>) {
+pub(crate) fn escape_into(bytes: &[u8], out: &mut Vec<u8>) {
     const HEX: &[u8; 16] = b"0123456789abcdef";
 
     for &byte in bytes {
@@ -44,14 +44,14 @@ pub(super) fn escape_into(bytes: &[u8], out: &mut Vec<u8>) {
 /// Checks that a stream of blocks is UTF-8, holding only a character split between two blocks.
 #[derive(Debug, Default)]
 #[cfg_attr(not(feature = "client"), allow(dead_code))]
-pub(super) struct Utf8Check {
+pub(crate) struct Utf8Check {
     carry: Vec<u8>,
 }
 
 #[cfg_attr(not(feature = "client"), allow(dead_code))]
 impl Utf8Check {
     /// Feeds the next block. `false` means the bytes so far are not UTF-8.
-    pub(super) fn push(&mut self, block: &[u8]) -> bool {
+    pub(crate) fn push(&mut self, block: &[u8]) -> bool {
         let joined;
         let bytes = if self.carry.is_empty() {
             block
@@ -71,7 +71,7 @@ impl Utf8Check {
     }
 
     /// Whether the stream ended on a whole character.
-    pub(super) fn finish(&self) -> bool {
+    pub(crate) fn finish(&self) -> bool {
         self.carry.is_empty()
     }
 }

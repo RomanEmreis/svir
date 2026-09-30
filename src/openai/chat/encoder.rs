@@ -4,8 +4,8 @@ use bytes::Bytes;
 use serde::Serialize;
 use serde_json::Value;
 
-use super::{
-    body::{Body, Encoding, Segment, attachment},
+use crate::body::{
+    Body, Encoding, Segment, attachment,
     escape::{escape_into, escaped_len},
 };
 use crate::{
@@ -545,7 +545,7 @@ mod files {
     use super::{Encoding, Measured, attachment, base64_len};
     use crate::{
         Error, ErrorKind,
-        openai::chat::escape::{Utf8Check, escaped_len},
+        body::escape::{Utf8Check, escaped_len},
     };
 
     /// Measures a file: an image by its size, a text file by reading it once.

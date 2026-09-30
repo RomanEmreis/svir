@@ -12,21 +12,33 @@ keywords = ["llm", "openai", "sse", "streaming", "ai"]
 categories = ["api-bindings", "asynchronous"]
 
 [features]
-default = ["client"]
-# Attachments read from disk while the body streams. The HTTP client joins this feature next.
-client = ["dep:futures-util", "dep:tokio"]
+default = ["client", "tls"]
+# `Client`, `EventStream`, the hyper transport, and attachments read from disk.
+client = ["dep:futures-core", "dep:hyper", "dep:hyper-util", "dep:tokio"]
+# Tool input schemas derived from the types of handlers' arguments.
+schemars = ["dep:schemars"]
+# The `Trace` layer.
+tracing = ["client", "dep:tracing"]
+# HTTPS, through rustls with the ring provider and the webpki roots.
+tls = ["client", "dep:hyper-rustls", "dep:rustls", "hyper/http2", "hyper-util/http2"]
 
 [dependencies]
 base64 = "0.22"
 bytes = "1"
-futures-util = { version = "0.3", default-features = false, features = ["std"], optional = true }
+futures-core = { version = "0.3", default-features = false, features = ["std"], optional = true }
+hyper = { version = "1", features = ["client", "http1"], optional = true }
+hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "http2", "ring", "tls12", "webpki-roots"], optional = true }
+hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"], optional = true }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"], optional = true }
+schemars = { version = "1", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["fs", "io-util"], optional = true }
+tokio = { version = "1", features = ["fs", "io-util", "rt", "time"], optional = true }
+tracing = { version = "0.1", default-features = false, features = ["std"], optional = true }
 
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
-tokio = { version = "1", features = ["fs", "io-util", "macros", "rt"] }
+tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt", "time"] }
 
 [lints.rust]
 unsafe_code = "forbid"

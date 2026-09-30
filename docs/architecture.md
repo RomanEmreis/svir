@@ -103,8 +103,9 @@ It is `svir::openai::chat::Encoder`, and it produces a `Body` (P2):
 - `encoder.encode_files(&request).await` (feature `client`) first measures attachments held as
   file paths;
 - `body.len()` is the exact length; `body.into_bytes()` gives an in-memory body whole, and
-  `body.into_stream()` (feature `client`) reads files as the body is sent. A `Body` is cheap to
-  clone, and a clone produces the same bytes.
+  `body.into_stream()` (feature `client`) gives a `BodyStream` that reads files as the body is
+  sent. A `Body` is cheap to clone, and a clone produces the same bytes. `Body` and `BodyStream`
+  live in `svir::body`, since the HTTP seam uses them too.
 
 The body is built as a sequence of segments: literal JSON bytes, serialized up front, and
 attachment segments encoded on demand. Each segment's encoded length is known in advance:
@@ -206,7 +207,7 @@ or a tool call wrong (P8).
 | Usage without `prompt_tokens` or `completion_tokens` | `Protocol` | Usage ignored |
 | Unknown finish reason (for example `content_filter`) | `Unsupported` | Open (O12); `Unsupported` until decided |
 | Content after the finish reason | `Unsupported` | Open (O12); `Unsupported` until decided |
-| Error object inside an open stream | Error (O13) | Error, with the server's message (O4, O13) |
+| Error object inside an open stream | Error, with the server's message (O13) | The same |
 
 Enforced the same way in both modes (P8):
 
@@ -245,13 +246,35 @@ API has an adapter under the one `Client` type (D13). The adapter posts the enco
 `Authorization: Bearer` when a key is configured (D17), maps HTTP status codes to error kinds, and
 requires a `text/event-stream` response before decoding. Layers wrap the adapter (D15).
 
-Proposed defaults (P4): no redirects, no automatic retries, no environment proxy discovery, a
-connect timeout of at most 10 seconds, and an idle read timeout. First-token and total limits are
-`Timeout` layers, so a long generation is not cut off by a request-wide default. Plain HTTP only
-on loopback unless explicitly allowed. A caller can supply its own client.
+The HTTP itself is hyper, behind a seam (D25). `svir::http::Backend` is a trait with one method:
+send an `HttpRequest` (method, URL, headers, and a body of known length as a `BodyStream`) and
+return an `HttpResponse` (status, headers, and the body as a byte stream) once the headers have
+arrived. The built-in backend, `Hyper`, is a pooled hyper client, with rustls when the `tls`
+feature is on; `.http(backend)` replaces it for a proxy, client certificates, or other roots.
+Everything else sits above the seam and holds for any backend: the idle timeout, status mapping,
+compatibility learning, and decoding.
 
-`client.send(request)` returns the server's bytes unchanged, after status mapping and
-compatibility handling, for a proxy that relays them and decodes them on the way past (D20).
+The seam is static (D27). The response body is the backend's associated `Body` type, `send`
+returns `impl Future`, and the client is generic over the backend: `Client<B = Hyper>`, which
+everyone on the built-in backend writes as `Client`. Nothing between a request and its answer is
+boxed or dispatched dynamically; the streams (`EventStream`, `RawStream`, `HyperBody`,
+`BodyStream`) are state machines written by hand. The one allocation is the idle timer.
+
+Defaults (P4): no redirects, no retries of a request that reached the server, no environment
+proxy discovery; connecting takes at most 10 seconds; the server may send nothing for at most 5
+minutes, before the headers and between pieces of the body. First-token and total limits are
+`Timeout` layers, so a long generation is not cut off by a request-wide default. Plain HTTP only
+on loopback unless `.allow_http()` says otherwise.
+
+An error response's body is read for the server's message, up to 64 KiB, and waited for only
+300 ms unless the kind of the error depends on it (400, 413, 422).
+
+`client.stream(request)` returns an `EventStream`: a `Stream` that also has its own `next()`, so
+reading it needs no extension trait. It is `Send + 'static`, ends with `Completed` or with an
+error, and stops reading the moment either is delivered. `client.complete(request)` collects it.
+`client.send(request)` returns the server's bytes unchanged, as a `RawStream`, after status
+mapping and compatibility handling, for a proxy that relays them and decodes them on the way past
+(D20).
 
 The base URL is accepted with or without `/v1` and trailing slashes; one with credentials, a query,
 or a fragment is refused. Model listing returns what `GET /v1/models` reports, `id` and optional
@@ -268,7 +291,8 @@ rejection of a request that carried optional fields triggers one retry without t
 succeeds, the server is remembered as strict and later requests omit those fields from the first
 attempt. If the retry fails too, the original error is reported. The memory lives in a
 cheap-to-clone handle shared by every request to that server. A 400/422 means nothing was
-generated, so this retry is safe. Its interaction with context-overflow errors is open (O3).
+generated, so this retry is safe. A 400 or 422 whose `error.code` says the context overflowed is
+not about those fields and is reported without the retry (D26).
 
 ### 4.8 Errors
 
@@ -362,10 +386,7 @@ loop {
     if done.calls.is_empty() {
         break println!("{}", done.text);
     }
-    let mut results = Vec::new();
-    for call in &done.calls {
-        results.push(tools.call(call).await);
-    }
+    let results = tools.call_all(&done.calls).await;
     request = request.assistant(done).tool_results(results);
 }
 ```
@@ -400,26 +421,39 @@ A layer wraps `Request -> Result<EventStream, Error>`, above the adapter, so it 
 the wire API. The first layer added is the outermost. A layer can act on the call (retry, time to
 headers, logging) and on the returned stream (first-token and idle timeouts, usage metrics).
 
+A layer is `svir::layer::Layer`: one `async fn call(&self, request, next)`, where `next.run(request)`
+is the rest of the stack. `.wrap(|request, next| async move { .. })` makes one from a closure. The
+client keeps its layers as trait objects, so its type is `Client<B>` whatever they are (D28); a
+client without layers pays nothing for them.
+
+A layer cannot change the type of the stream, so it shapes the stream through `EventStream`'s own
+methods: `first_token_by`, `complete_by`, `idle_timeout`, and `inspect`, which watches every item
+as it is returned.
+
 | Layer | Behavior |
 | --- | --- |
-| `Retry::connect(n)` | Retries connection failures, where the request never reached the server |
-| `Retry::transient(n)` | Retries retryable kinds with backoff, honoring `Retry-After` |
-| `Timeout::first_token(d)` | Fails with `Timeout` if no text or reasoning arrives within `d` |
-| `Timeout::idle(d)` | Fails with `Timeout` if the stream is silent for `d` |
-| `Timeout::total(d)` | Fails with `Timeout` if the answer is not complete within `d` |
-| `Trace` | Spans and events through `tracing` (feature `tracing`) |
+| `Retry::connect(n)` | Retries a call whose request never reached the server (`error.is_unsent()`) |
+| `Retry::transient(n)` | Also retries retryable kinds, with backoff, honoring `Retry-After` |
+| `Timeout::first_token(d)` | Fails with `Timeout` if nothing of the answer (text, reasoning, a piece of a tool call) arrives within `d` of the call |
+| `Timeout::idle(d)` | Fails with `Timeout` if the server is silent for `d` |
+| `Timeout::total(d)` | Fails with `Timeout` if the answer is not complete within `d` of the call |
+| `Trace` | Reports each call through `tracing` (feature `tracing`): model, timings, finish, token counts, failures; never text or the server's messages |
 
-No retry happens after an event has been delivered (D16).
+A retry covers a call that failed before the response started; nothing is retried inside the
+stream (D16). `client.send()` and `client.list_models()` do not pass through layers.
 
 ### 5.3 Tools
 
 svir has no tool macro (D18). A tool set is anything implementing `Toolbox`: it describes tools
 to the model (`Request::tools(&toolbox)`) and answers one call at a time (`toolbox.call(&call)`).
 
-- **`Tools`**, in svir, is a plain registry: `Tools::new().add(name, description, handler)`, the
-  handler taking arguments deserialized with serde, the schema derived with the `schemars` feature
-  or given explicitly. It validates arguments and turns a failure into a tool result for the model.
-  `call.parse::<T>()` parses raw arguments for callers without a registry.
+- **`Tools`**, in svir, is a plain registry. `Tools::new().add(name, description, handler)` derives
+  the schema from the type of the handler's arguments (feature `schemars`);
+  `.add_tool(tool, handler)` takes a `Tool` with its own schema. The handler's arguments are
+  deserialized with serde, which is the validation: arguments that do not fit never reach it. A
+  failure becomes a tool result for the model, `error: ..`. `toolbox.call_all(&calls)` answers
+  several calls in order, and `call.parse::<T>()` parses raw arguments for callers without a
+  registry.
 - **MCP tools** come through neva, which implements `Toolbox` behind its `svir` feature. A function
   written once with `#[neva::tool]` can be served over MCP and handed to a model in the same
   process, and the tools of a remote MCP server can be handed to a model through `neva::Client`.
@@ -439,9 +473,10 @@ async fn ask(models: Dc<Models>, model: String, prompt: String) -> Result<String
 ### 5.4 Crates and features
 
 One crate, `svir`, with no procedural macros (D14). Without features: types and the codec.
-`client` (default): `Client`, `EventStream`, and the reqwest and tokio transport. `schemars`,
-`tracing`, and `testing` (a `MockServer` and scripted event streams for the caller's own tests)
-are opt-in.
+`client` (default): `Client`, `EventStream`, the HTTP seam, and the hyper and tokio transport.
+`tls` (default): HTTPS through rustls. `schemars` (`Tools::add`), `tracing` (the `Trace` layer),
+and `testing` (a `MockServer` and scripted event streams for the caller's own tests, not yet
+written) are opt-in.
 
 ## 6. Security
 

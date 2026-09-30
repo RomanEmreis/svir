@@ -78,6 +78,8 @@ pub struct Error {
     retry_after: Option<Duration>,
     server_message: Option<Box<str>>,
     source: Option<Box<dyn StdError + Send + Sync>>,
+    /// The request never reached the server.
+    unsent: bool,
 }
 
 impl Error {
@@ -89,6 +91,7 @@ impl Error {
             retry_after: None,
             server_message: None,
             source: None,
+            unsent: false,
         }
     }
 
@@ -127,6 +130,13 @@ impl Error {
         self
     }
 
+    /// Marks the failure as one where the request never reached the server, such as a refused or
+    /// timed-out connection. Sending the request again then cannot repeat anything.
+    pub fn with_unsent(mut self) -> Self {
+        self.unsent = true;
+        self
+    }
+
     /// What went wrong.
     pub fn kind(&self) -> ErrorKind {
         self.kind
@@ -135,6 +145,12 @@ impl Error {
     /// Whether trying the same request again can succeed.
     pub fn is_retryable(&self) -> bool {
         self.kind.is_retryable()
+    }
+
+    /// Whether the request never reached the server: the connection could not be made. Such a
+    /// request can always be sent again.
+    pub fn is_unsent(&self) -> bool {
+        self.unsent
     }
 
     /// How long the server asked to wait before trying again, if it said.
@@ -184,6 +200,9 @@ impl fmt::Debug for Error {
                 "server_message",
                 &format_args!("<{} bytes withheld>", message.len()),
             );
+        }
+        if self.unsent {
+            out.field("unsent", &true);
         }
         if let Some(source) = &self.source {
             out.field("source", source);

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Completion, Message, Tool, ToolResult};
+use crate::{Completion, Message, Tool, ToolResult, Toolbox};
 
 /// How much the model should reason before answering.
 ///
@@ -116,9 +116,10 @@ impl Request {
         self
     }
 
-    /// Adds tools the model may call.
-    pub fn tools(mut self, tools: impl IntoIterator<Item = Tool>) -> Self {
-        self.tools.extend(tools);
+    /// Adds the tools of a tool set, such as [`Tools`](crate::Tools). The request takes their
+    /// descriptions; answering the model's calls stays with the tool set.
+    pub fn tools(mut self, toolbox: &(impl Toolbox + ?Sized)) -> Self {
+        self.tools.extend(toolbox.tools());
         self
     }
 
