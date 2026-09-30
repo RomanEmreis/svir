@@ -17,7 +17,6 @@ What does this change do and why?
 - [ ] This change is backwards-compatible, the serde form of public types and the error kinds included (or clearly marked as breaking)
 - [ ] `cargo fmt --check`, `cargo clippy -- -D warnings`, and `cargo test` pass with default features, with `--no-default-features`, and with `--all-features`
 - [ ] No credential, request URL, or server message reaches an error's `Debug` or `Display`, an event, or a log
-- [ ] Code and docs are ASCII only
 
 ## Servers
 Which model servers was this run against, if any (`tests/live.rs`, the examples)? "None" is a fine answer for changes the default test run covers.

@@ -83,8 +83,8 @@ SVIR_MODEL=<model> cargo test --test live -- --ignored --test-threads=1
 
 ### Style
 
-- Code and docs are ASCII: `-` or `--` for a dash, `->` for an arrow, `...` for an
-  ellipsis, straight quotes.
+- Code, comments, and conformance cases are ASCII: `-` or `--` for a dash, `->` for an
+  arrow, `...` for an ellipsis, straight quotes. Prose in the docs follows the same habit.
 - Every public item is documented. Every public data type is `#[non_exhaustive]` and
   serializable.
 - No `unsafe`, and no `unwrap()` outside tests.
