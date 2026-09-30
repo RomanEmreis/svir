@@ -9,7 +9,7 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
    results, events and completions, usage and timing, the error taxonomy, `Limits`, `Mode`, and
    `Think`. Their serde form is pinned against the conformance notation.
 3. **Decoder.** Done: `svir::openai::chat::Decoder` with SSE framing, tool-call assembly,
-   limits, `<think>` splitting, live reasoning, strict and lenient modes, and timing. All 50 decoder
+   limits, `<think>` splitting, live reasoning, strict and lenient modes, and timing. All 53 decoder
    cases pass in `tests/conformance_decoder.rs`; the two lenient O12 cases are pending.
 4. **Encoder.** Done: `svir::openai::chat::Encoder` and `Body`, with the exact length,
    attachments from memory and from disk, tools, tool calls and results, reasoning sent back, and
@@ -39,7 +39,7 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
 The suite is data: see [tests/conformance](../tests/conformance/README.md) for the format. It is
 written for all three components:
 
-- `decoder/`: 50 cases. Framing, reasoning and `<think>` splitting, tool-call assembly, usage,
+- `decoder/`: 53 cases. Framing, reasoning and `<think>` splitting, tool-call assembly, usage,
   limits, errors inside the stream, and strict and lenient outcomes for each.
 - `encoder/`: 22 cases. Content layout, attachments at every size around the block size, exact
   length and repeatability, reasoning and tool round trips, admission.

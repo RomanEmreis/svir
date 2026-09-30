@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.1.1
+
+### Fixed
+
+* **Inline `<think>` tags are split out when a delta is nothing but part of
+  one.** A delta such as `<thi` or `</`, with no text around it, was passed on
+  as answer text instead of being held until the next delta decided it. The
+  tags then stayed in the answer (`<thi`, `nk>hm</think>`), or the rest of the
+  answer went to reasoning (`<think>hm`, `</`, `think>`). Models whose tokenizer
+  has no single token for the tag send it this way, on servers without a
+  reasoning parser. Reasoning from `reasoning_content` or `reasoning` was not
+  affected.
+
 ## 0.1.0
 
 The first release: OpenAI-compatible Chat Completions streaming, as served by LM Studio,
