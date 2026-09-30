@@ -18,11 +18,15 @@ pub enum Mode {
 }
 
 /// What to do with `<think>...</think>` inside the answer text.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+///
+/// Servers without a reasoning parser put the model's reasoning there. Split by default, so it is
+/// not shown as the answer. Reasoning split out of these tags is never sent back to the model.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Think {
     /// Route it to reasoning, with [`ReasoningSource::Think`](crate::ReasoningSource::Think).
+    #[default]
     Split,
     /// Leave it in the text.
     Keep,
@@ -78,6 +82,7 @@ mod tests {
     #[test]
     fn strict_is_the_default_and_limits_match_the_documented_defaults() {
         assert_eq!(Mode::default(), Mode::Strict);
+        assert_eq!(Think::default(), Think::Split);
         let limits = Limits::default();
         assert_eq!(
             (limits.wire_bytes, limits.event_bytes, limits.tool_calls),

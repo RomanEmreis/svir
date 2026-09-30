@@ -9,7 +9,7 @@ on an open decision lists it in `open`.
 
 | Directory | Covers | Status |
 | --- | --- | --- |
-| `decoder/` | SSE framing, deltas, reasoning, tool calls, usage, limits, strict and lenient | 46 cases |
+| `decoder/` | SSE framing, deltas, reasoning, tool calls, usage, limits, strict and lenient | 46 cases, run by `tests/conformance_decoder.rs` |
 | `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, admission | 22 cases |
 | `transport/` | Authentication, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 42 cases |
 
@@ -35,7 +35,7 @@ One JSON file per case. Recorded fixtures (`*.sse`) sit next to the cases that u
 `options`:
 
 - `think`: `"split"` routes `<think>...</think>` in the content to reasoning; `"keep"` leaves it in
-  the text. Omitted when the case has no `<think>` tags, so the default does not matter (O2).
+  the text. The default is `"split"` (D23); cases with `<think>` tags state it anyway.
 - `limits`: any of `wire_bytes` (default 4194304), `event_bytes` (default 262144), and
   `tool_calls` (default 64).
 

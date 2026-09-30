@@ -266,6 +266,18 @@ usage, and compatibility learning (D11) drops it on servers that reject it.
 They can grow without breaking callers, and consumers can store messages and completions. The
 serde form is then a public contract: changing it is a breaking change.
 
+### D23. `<think>` is split by default and never sent back
+
+Resolves O2. `Think::Split` is the default: servers without a reasoning parser put the model's
+reasoning inside the answer text, and without splitting it is shown as the answer and sent back
+to the model on every turn. A caller whose answers legitimately contain the tag uses
+`Think::Keep`.
+
+Reasoning split out of `<think>` tags is not sent back, even with `.send_reasoning(true)`. Servers
+that inline the tags read no reasoning field in a request, and the chat templates of such models
+drop earlier reasoning from the history anyway; putting it back into the text would only spend
+context. This is a documented rule, not a silent loss.
+
 ## Proposed
 
 ### P1. Edition 2024; MSRV 1.85
@@ -344,7 +356,8 @@ can reject. D21 is the one exception.
 - With images, content is an array: that one text part (if there is any text), then the images
   as data URLs, in the order given.
 - A tool result's content is the caller's string. svir does not wrap or serialize outcomes.
-- Reasoning goes back only when the request asks for it, under the key it arrived with.
+- Reasoning goes back only when the request asks for it, under the key it arrived with;
+  reasoning split out of `<think>` tags never goes back (D23).
 
 ### P13. Attachment failures are their own error kind
 
@@ -364,8 +377,6 @@ the configured context size; otherwise it fails with `ContextOverflow` before a 
 
 ## Open
 
-- **O2. `<think>` splitting.** On by default or opt-in? Is reasoning split out of `<think>` sent
-  back, and if so, as tags in `content` or not at all?
 - **O3. Compatibility retry versus context overflow.** Today any 400/422 on a request with optional
   fields is retried once without them, including a context overflow, which cannot succeed. Skip the
   retry when `error.code` identifies an overflow? Servers that report it only in text remain.
@@ -387,5 +398,5 @@ the configured context size; otherwise it fails with `ContextOverflow` before a 
   `ToolResult` carry an `is_error` flag? Some APIs have one; Chat Completions would carry it only
   in the text.
 
-Resolved: O1 (API names and DX) by D13-D18, O4 (server error messages) by D19, O8 (tool
-arguments) by D18.
+Resolved: O1 (API names and DX) by D13-D18, O2 (`<think>` splitting) by D23, O4 (server error
+messages) by D19, O8 (tool arguments) by D18.

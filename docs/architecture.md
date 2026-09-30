@@ -93,7 +93,7 @@ builder methods, with public fields for reading.
   Chat Completions needs to send it back. Opaque continuation data, such as signed thinking
   blocks, arrives with the first wire API that needs it (O6).
 - **Decoding options**: `Mode` (`Strict` by default), `Limits`, and `Think` (`Split` or `Keep`;
-  its default is O2).
+  `Split` by default, D23).
 
 ### 4.2 Encoder
 
@@ -131,6 +131,13 @@ sent.
 The decoder is push-based and does no I/O: bytes go in, events come out. That lets it read a
 stream that is being forwarded elsewhere unchanged (a proxy that relays bytes to a browser and
 decodes them on the way past), as well as a stream it owns.
+
+It is `svir::openai::chat::Decoder`: `Decoder::strict()` or `Decoder::lenient()`, then
+`.limits(..)` and `.think(..)`. `decoder.push(&bytes)` returns what those bytes complete, as
+`Result<Event, Error>` items in wire order, at most one error and always last. `decoder.finish()`
+ends the input and reports a stream that never completed as `TruncatedStream`. A chunk
+contributes all of its events or, when it is invalid, none. The `Stream` over a byte stream comes
+with the client (step 5 of the roadmap).
 
 Output is a `Stream` of `Result<Event, Error>` (D4). The types are in `src/response.rs`:
 
@@ -183,8 +190,8 @@ or a tool call wrong (P8).
 | `id` or `model` changes mid-stream | `Protocol` | Ignored |
 | Usage reported twice | `Protocol` | The last one kept |
 | Usage without `prompt_tokens` or `completion_tokens` | `Protocol` | Usage ignored |
-| Unknown finish reason (for example `content_filter`) | `Unsupported` | Open (O12) |
-| Content after the finish reason | `Unsupported` | Open (O12) |
+| Unknown finish reason (for example `content_filter`) | `Unsupported` | Open (O12); `Unsupported` until decided |
+| Content after the finish reason | `Unsupported` | Open (O12); `Unsupported` until decided |
 | Error object inside an open stream | Error (O13) | Error, with the server's message (O4, O13) |
 
 Enforced the same way in both modes (P8):
@@ -209,8 +216,8 @@ Reasoning arrives in three carriers (see [wire-protocol.md](wire-protocol.md#4-r
 `reasoning_content`, `reasoning`, and `<think>...</think>` inside `content`. The decoder emits all
 of them as live `Reasoning` events tagged with their source and also keeps them in the
 completion (P5). The carrier matters when sending reasoning back: a server expects its own field
-back, unchanged, as continuation. Whether reasoning split out of `<think>` tags is sent back, and
-whether splitting is on by default, is open (O2).
+back, unchanged. Splitting `<think>` is on by default, and reasoning split out of the tags is never
+sent back (D23).
 
 Splitting `<think>` is a streaming problem: a marker can be cut by a chunk boundary, so a
 possible partial marker at the end of a chunk is held back until the next chunk decides it. At the

@@ -1,5 +1,5 @@
 {
-  "description": "Reasoning that came from <think> tags, asked to be sent back.",
+  "description": "Reasoning that came from <think> tags is not sent back, even when asked (D23).",
   "request": {
     "model": "m",
     "messages": [
@@ -12,5 +12,15 @@
     ]
   },
   "options": {"send_reasoning": true},
-  "expect": {"open": "O2"}
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "messages": [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "42"},
+        {"role": "user", "content": "and?"}
+      ]
+    }
+  }
 }

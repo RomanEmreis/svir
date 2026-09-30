@@ -170,7 +170,7 @@ Three carriers exist:
 | --- | --- | --- |
 | `reasoning_content` | Delta key; LM Studio and servers with a reasoning parser | The same key on the assistant message |
 | `reasoning` | Delta key; some servers | The same key on the assistant message |
-| `<think>...</think>` | Inside `content`, from servers without a reasoning parser (llama.cpp, mlx) | Unclear; see O2 in [decisions.md](decisions.md) |
+| `<think>...</think>` | Inside `content`, from servers without a reasoning parser (llama.cpp, mlx) | Nothing in a request field; svir does not send it back (D23 in [decisions.md](decisions.md)) |
 
 Treating inline `<think>` as answer text shows the reasoning to the user as the answer, and sends
 it back to the model on every turn. The markers can be split across chunks anywhere, for example
