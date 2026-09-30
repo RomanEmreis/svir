@@ -2,7 +2,24 @@
 
 use crate::{Error, ErrorKind, Limits, Mode};
 
-/// Assembles `data` payloads of `message` events from a byte stream.
+/// A complete event: its data, and whether the server sent it as an `error` event.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct Frame {
+    pub(super) data: Vec<u8>,
+    pub(super) error: bool,
+}
+
+/// The type of the event being read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Message,
+    /// The server reports a failure; the data says which.
+    Error,
+    /// A type outside the protocol; lenient mode drops the event.
+    Foreign,
+}
+
+/// Assembles the events of a byte stream: `message` events with their data, and `error` events.
 #[derive(Debug)]
 pub(super) struct Framer {
     mode: Mode,
@@ -10,8 +27,7 @@ pub(super) struct Framer {
     wire: usize,
     line: Vec<u8>,
     data: Vec<u8>,
-    /// The current event has a type other than `message`; lenient mode drops it.
-    foreign: bool,
+    kind: Kind,
 }
 
 impl Framer {
@@ -22,12 +38,12 @@ impl Framer {
             wire: 0,
             line: Vec::new(),
             data: Vec::new(),
-            foreign: false,
+            kind: Kind::Message,
         }
     }
 
-    /// Feeds one byte. Returns the data of a complete event when this byte ends one.
-    pub(super) fn byte(&mut self, byte: u8) -> Result<Option<Vec<u8>>, Error> {
+    /// Feeds one byte. Returns the event this byte ends, if it ends one.
+    pub(super) fn byte(&mut self, byte: u8) -> Result<Option<Frame>, Error> {
         self.wire += 1;
         if self.wire > self.limits.wire_bytes {
             return Err(limit("the response is longer than the wire-byte limit"));
@@ -54,10 +70,16 @@ impl Framer {
         Ok(None)
     }
 
-    fn dispatch(&mut self) -> Option<Vec<u8>> {
+    fn dispatch(&mut self) -> Option<Frame> {
         let data = std::mem::take(&mut self.data);
-        let foreign = std::mem::replace(&mut self.foreign, false);
-        (!data.is_empty() && !foreign).then_some(data)
+        let kind = std::mem::replace(&mut self.kind, Kind::Message);
+
+        match kind {
+            // An error needs no data to be one.
+            Kind::Error => Some(Frame { data, error: true }),
+            Kind::Message if !data.is_empty() => Some(Frame { data, error: false }),
+            Kind::Message | Kind::Foreign => None,
+        }
     }
 
     fn field(&mut self, line: &[u8]) -> Result<(), Error> {
@@ -83,7 +105,9 @@ impl Framer {
             }
             b"id" | b"retry" => {}
             b"event" if value == b"message" => {}
-            _ if self.mode == Mode::Lenient => self.foreign |= name == b"event",
+            b"event" if value == b"error" => self.kind = Kind::Error,
+            b"event" if self.mode == Mode::Lenient => self.kind = Kind::Foreign,
+            _ if self.mode == Mode::Lenient => {}
             _ => {
                 return Err(Error::new(ErrorKind::Unsupported)
                     .with_detail("a server-sent event field outside the protocol"));
@@ -105,8 +129,9 @@ mod tests {
         let mut framer = Framer::new(mode, Limits::default());
         let mut out = Vec::new();
         for byte in wire.bytes() {
-            if let Some(data) = framer.byte(byte)? {
-                out.push(String::from_utf8(data).unwrap());
+            if let Some(frame) = framer.byte(byte)? {
+                assert!(!frame.error);
+                out.push(String::from_utf8(frame.data).unwrap());
             }
         }
         Ok(out)
@@ -127,6 +152,26 @@ mod tests {
             ErrorKind::Unsupported
         );
         assert_eq!(frames(Mode::Lenient, wire).unwrap(), ["y"]);
+    }
+
+    #[test]
+    fn an_error_event_is_told_apart_with_or_without_data() {
+        for mode in [Mode::Strict, Mode::Lenient] {
+            let mut framer = Framer::new(mode, Limits::default());
+            let mut frames = Vec::new();
+            for byte in b"event: error\ndata: x\n\nevent: error\n\ndata: y\n\n" {
+                frames.extend(framer.byte(*byte).unwrap());
+            }
+
+            let frame = |data: &str, error| Frame {
+                data: data.into(),
+                error,
+            };
+            assert_eq!(
+                frames,
+                [frame("x", true), frame("", true), frame("y", false)]
+            );
+        }
     }
 
     #[test]

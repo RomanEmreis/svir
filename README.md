@@ -3,8 +3,9 @@
 A small, composable Rust SDK for talking to large language models: the wire protocol between your
 application and a model server, and nothing it does not need.
 
-> **Status**: design stage. There is no code yet, nothing is published, and names may still
-> change. The design record is in [docs/](docs/).
+> **Status**: early. The Chat Completions codec, the client, layers, and tool sets exist and run
+> against real servers; nothing is published yet, and names may still change. The design record
+> is in [docs/](docs/).
 
 ## The name
 
@@ -13,6 +14,34 @@ Ladoga to the Baltic. svir sits in the same family as [volga](https://github.com
 (HTTP) and [neva](https://github.com/RomanEmreis/neva) (MCP), and like its river it joins two
 bodies of water that already exist: two independent, working implementations of the same
 protocol, each strong where the other is weak.
+
+## A first look
+
+```rust
+use svir::prelude::*;
+
+#[tokio::main]
+async fn main() -> Result<(), svir::Error> {
+    let client = Client::openai("http://127.0.0.1:1234").build()?;
+    let request = Request::new("qwen3-27b")
+        .system("Be precise.")
+        .user("Why do rivers meander?");
+
+    let mut stream = client.stream(&request).await?;
+    while let Some(event) = stream.next().await {
+        match event? {
+            Event::Text(piece) => print!("{piece}"),
+            Event::Completed(done) => println!("\n{:?}", done.usage),
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+```
+
+`client.complete(&request)` returns the whole answer instead. Dropping the stream cancels the
+request.
 
 ## What it covers
 
@@ -40,6 +69,30 @@ On top of that core, opt-in:
 
 Not covered, on purpose: an agent loop, session history, storage, and MCP. Those belong to the
 application; svir gives it the pieces to build them.
+
+## Examples
+
+[examples/](examples/) has one short program per way of using svir. They take the server from
+`SVIR_URL` (`http://127.0.0.1:1234` unless set) and the model from `SVIR_MODEL`:
+
+```sh
+cargo run --example models
+SVIR_MODEL=<model> cargo run --example stream
+```
+
+| Example | Shows |
+| --- | --- |
+| `models` | The models a server has |
+| `complete` | The whole answer, its token counts and speed |
+| `stream` | An answer as it arrives: reasoning, then text |
+| `chat` | A conversation; the caller keeps the history |
+| `attachments` | An image read from disk and a text file in one message |
+| `tools` | A `Tools` registry and the loop that feeds results back |
+| `tools_typed` | Tool schemas derived from types (feature `schemars`), calls shown as they stream |
+| `toolbox` | A tool set of one's own, with shared state |
+| `layers` | `Retry`, `Timeout`, a closure, and a layer of one's own |
+| `relay` | A proxy: the server's bytes passed on unchanged and decoded on the way past |
+| `codec` | The encoder and decoder alone, with no client and no server |
 
 ## Principles
 

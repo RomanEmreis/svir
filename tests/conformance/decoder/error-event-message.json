@@ -1,0 +1,14 @@
+{
+  "description": "An 'event: error' event after part of the answer, with the message at the top level of its data.",
+  "chunks": [
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"},\"finish_reason\":null}]}\n\n",
+    "event: error\ndata: {\"message\":\"engine died\"}\n\n",
+    "data: [DONE]\n\n"
+  ],
+  "strides": [1, 3, 8192],
+  "open": ["O13"],
+  "expect": {
+    "strict": {"error": "protocol", "partial": {"text": "partial"}, "message": "engine died"},
+    "lenient": "same"
+  }
+}

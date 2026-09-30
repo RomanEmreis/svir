@@ -1,0 +1,12 @@
+{
+  "description": "An 'event: error' event whose data is not JSON: the data is the server's message.",
+  "chunks": [
+    "event: error\ndata: engine died\n\n"
+  ],
+  "strides": [1, 3, 8192],
+  "open": ["O13"],
+  "expect": {
+    "strict": {"error": "protocol", "message": "engine died"},
+    "lenient": "same"
+  }
+}

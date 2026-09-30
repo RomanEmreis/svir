@@ -1,0 +1,16 @@
+{
+  "description": "An 'event: error' event is the server's error, as LM Studio reports a prompt longer than the context: status 200, this one event, and no [DONE].",
+  "chunks": [
+    "event: error\ndata: {\"error\":{\"message\":\"The number of tokens to keep from the initial prompt is greater than the context length.\"},\"message\":\"The number of tokens to keep from the initial prompt is greater than the context length.\"}\n\n"
+  ],
+  "strides": [1, 3, 8192],
+  "open": ["O13"],
+  "expect": {
+    "strict": {
+      "error": "protocol",
+      "partial": {"text": "", "reasoning": ""},
+      "message": "The number of tokens to keep from the initial prompt is greater than the context length."
+    },
+    "lenient": "same"
+  }
+}

@@ -19,7 +19,7 @@ and observed server behavior. How svir handles each fact is in [architecture.md]
 
 | Field | Notes |
 | --- | --- |
-| `model` | Exact model ID as the server lists it |
+| `model` | Exact model ID as the server lists it. LM Studio answers a request for an ID it does not know with a loaded model instead of an error |
 | `messages` | See 2.2 |
 | `stream` | `true` |
 | `max_tokens` | Output cap |
@@ -83,7 +83,7 @@ was generated in that case, so retrying without them is safe.
 - `data:` lines carry the payload; one leading space after the colon is not part of it. Several
   `data:` lines in one event join with `\n`.
 - Lines starting with `:` are comments (keep-alives). `id:`, `retry:`, and `event: message` also
-  occur. Other event types are not part of this protocol.
+  occur. `event: error` reports a failure (3.5). Other event types are not part of this protocol.
 - Chunk boundaries fall anywhere: inside a line, inside a JSON string, inside a UTF-8 character.
   A line break never falls inside a UTF-8 character, so a complete line is complete text.
 - The stream ends with `data: [DONE]`.
@@ -101,6 +101,9 @@ was generated in that case, so retrying without them is safe.
   `function_call`) are features outside this protocol subset.
 - `finish_reason` appears once, on the last choice chunk: `stop`, `tool_calls`, or `length`.
   `content_filter` and others exist in the wider schema.
+- A server that separates reasoning itself leaves what followed it in the answer: LM Studio's
+  first `content` delta after reasoning is `"\n\n"`, also ahead of tool calls. It is part of the
+  text the server sent.
 
 ### 3.3 Tool calls
 
@@ -153,7 +156,19 @@ vLLM and llama.cpp send an error chunk inside an open stream when generation die
 {"error": {"message": "..."}}
 ```
 
-Everything received before it is a partial answer, not a complete one.
+LM Studio sends an SSE event of type `error`, with status 200, and nothing after it, not even
+`[DONE]`:
+
+```text
+event: error
+data: {"error":{"message":"..."},"message":"..."}
+```
+
+A prompt longer than the loaded context is reported this way, before anything is generated, and
+without an error code: only the message says what happened ("The number of tokens to keep from
+the initial prompt is greater than the context length...").
+
+Everything received before an error is a partial answer, not a complete one.
 
 ### 3.6 Speed
 
@@ -189,7 +204,8 @@ very end (`done<thi`) is text.
 | other | Not expected from this API |
 
 Context overflow is a 400/413/422 with `error.code` of `context_length_exceeded` or
-`context_window_exceeded`. Servers that do not set a code say it only in the message text.
+`context_window_exceeded`. Servers that do not set a code say it only in the message text, and
+LM Studio says it inside the stream (3.5).
 
 An upstream `401` in a proxy is ambiguous: it can mean the proxy's own session or the model
 server's key. A proxy has to keep the two apart.

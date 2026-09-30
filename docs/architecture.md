@@ -196,7 +196,7 @@ or a tool call wrong (P8).
 
 | Situation | Strict | Lenient |
 | --- | --- | --- |
-| Unknown SSE field (not `data`, `id`, `retry`, `event: message`, or a comment) | `Unsupported` | Ignored |
+| Unknown SSE field (not `data`, `id`, `retry`, `event: message`, `event: error`, or a comment) | `Unsupported` | Ignored |
 | `data` that is not valid JSON | `Protocol` | Ignored |
 | Invalid UTF-8 in an event | `Protocol` | Replaced lossily |
 | Unknown key in a delta (for example `audio`, `refusal`) | `Unsupported` | Ignored |
@@ -207,7 +207,7 @@ or a tool call wrong (P8).
 | Usage without `prompt_tokens` or `completion_tokens` | `Protocol` | Usage ignored |
 | Unknown finish reason (for example `content_filter`) | `Unsupported` | Open (O12); `Unsupported` until decided |
 | Content after the finish reason | `Unsupported` | Open (O12); `Unsupported` until decided |
-| Error object inside an open stream | Error, with the server's message (O13) | The same |
+| Error object inside an open stream, or an `event: error` event | Error, with the server's message (O13) | The same |
 
 Enforced the same way in both modes (P8):
 
@@ -486,14 +486,16 @@ written) are opt-in.
   implicitly (D17).
 - Plain HTTP to a non-loopback host is refused unless the caller opts in (P4).
 - Tool descriptions and tool arguments are data from the model. svir executes nothing on its own:
-  a `Toolbox` runs only handlers the caller registered, and `Tools` validates arguments against
-  their schemas first.
+  a `Toolbox` runs only handlers the caller registered, and `Tools` hands a handler only
+  arguments that deserialize into its type.
 
 ## 7. Testing
 
 The default test run needs no model, network, or credentials: recorded SSE fixtures, and a local
-loopback HTTP server for transport behavior. Tests against a live model are opt-in. The same
-scripted server is published as `svir::testing::MockServer` for callers' own tests (D14).
+loopback HTTP server for transport behavior. Tests against a live model are opt-in:
+`tests/live.rs` is ignored unless asked for, and takes the server and the model from `SVIR_URL`
+and `SVIR_MODEL`. The same scripted server is published as `svir::testing::MockServer` for
+callers' own tests (D14).
 
 The conformance suite comes before the code. It is data, independent of the API: see
 [tests/conformance](../tests/conformance/README.md). What is still to be written is listed in

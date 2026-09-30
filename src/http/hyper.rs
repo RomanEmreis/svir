@@ -214,14 +214,16 @@ impl Body for SizedBody {
 }
 
 /// Maps a hyper failure. A failure of the request body itself, such as an attachment that
-/// changed, keeps its own kind; a timed-out connect is a timeout; the rest is transport. A failure
-/// to connect is marked as never having reached the server.
+/// changed, keeps its own kind; a timed-out connect is a timeout; the rest is transport, described
+/// by its chain of causes, which name no URL and no header. A failure to connect is marked as
+/// never having reached the server.
 fn failed(error: &(dyn StdError + 'static)) -> Error {
     let unsent = error
         .downcast_ref::<hyper_util::client::legacy::Error>()
         .is_some_and(hyper_util::client::legacy::Error::is_connect);
 
     let mut timed_out = false;
+    let mut causes = String::new();
     let mut cause: Option<&(dyn StdError + 'static)> = Some(error);
     while let Some(current) = cause {
         if let Some(own) = current.downcast_ref::<Error>() {
@@ -234,13 +236,22 @@ fn failed(error: &(dyn StdError + 'static)) -> Error {
         if let Some(io) = current.downcast_ref::<io::Error>() {
             timed_out |= io.kind() == io::ErrorKind::TimedOut;
         }
+
+        // Some errors print their cause themselves; it is not said twice.
+        let message = current.to_string();
+        if !causes.ends_with(&message) {
+            if !causes.is_empty() {
+                causes.push_str(": ");
+            }
+            causes.push_str(&message);
+        }
         cause = current.source();
     }
 
     let mapped = if timed_out {
         Error::new(ErrorKind::Timeout).with_detail("connecting to the model server timed out")
     } else {
-        Error::new(ErrorKind::Transport).with_detail(error.to_string())
+        Error::new(ErrorKind::Transport).with_detail(causes)
     };
     if unsent { mapped.with_unsent() } else { mapped }
 }

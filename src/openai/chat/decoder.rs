@@ -138,7 +138,8 @@ impl Decoder {
                 break;
             }
             let step = match self.framer.byte(byte) {
-                Ok(Some(data)) => self.event(&data, &mut out),
+                Ok(Some(frame)) if frame.error => Err(error_event(&frame.data)),
+                Ok(Some(frame)) => self.event(&frame.data, &mut out),
                 Ok(None) => Ok(()),
                 Err(error) => Err(error),
             };
@@ -540,9 +541,26 @@ fn server_error(error: &Value) -> Error {
         .and_then(Value::as_str)
         .or_else(|| error.as_str());
     let reported = protocol("the server reported an error inside the stream");
-    match message {
+
+    match message.filter(|message| !message.is_empty()) {
         Some(message) => reported.with_server_message(message),
         None => reported,
+    }
+}
+
+/// An `error` event. Whatever its data, the stream has failed: the data is the server's error
+/// object, or an object with the message, or the message itself.
+fn error_event(data: &[u8]) -> Error {
+    let text = String::from_utf8_lossy(data);
+    let text = text.trim();
+
+    match serde_json::from_str::<Value>(text) {
+        Ok(Value::Object(body)) => match present(&body, "error") {
+            Some(error) => server_error(error),
+            None => server_error(&Value::Object(body)),
+        },
+        Ok(Value::String(message)) => server_error(&Value::String(message)),
+        _ => server_error(&Value::String(text.to_owned())),
     }
 }
 
@@ -606,6 +624,36 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.kind(), ErrorKind::Protocol);
         assert_eq!(error.server_message(), Some("engine died"));
+    }
+
+    #[test]
+    fn an_error_event_fails_the_stream_in_either_mode() {
+        let failure = |mode, wire: &str| {
+            let mut decoder = Decoder::new(mode);
+            let error = decoder.push(wire.as_bytes()).pop().unwrap().unwrap_err();
+
+            assert!(decoder.is_done());
+            assert!(decoder.finish().is_ok(), "the failure is reported once");
+            (error.kind(), error.server_message().map(str::to_owned))
+        };
+
+        for mode in [Mode::Strict, Mode::Lenient] {
+            for (wire, message) in [
+                (
+                    "event: error\ndata: {\"error\":{\"message\":\"too long\"}}\n\n",
+                    Some("too long"),
+                ),
+                (
+                    "event: error\ndata: {\"message\":\"too long\"}\n\n",
+                    Some("too long"),
+                ),
+                ("event: error\ndata: too long\n\n", Some("too long")),
+                ("event: error\n\n", None),
+            ] {
+                let expected = (ErrorKind::Protocol, message.map(str::to_owned));
+                assert_eq!(failure(mode, wire), expected, "{mode:?} {wire:?}");
+            }
+        }
     }
 
     #[test]

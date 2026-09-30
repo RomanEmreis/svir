@@ -38,7 +38,48 @@ tracing = { version = "0.1", default-features = false, features = ["std"], optio
 
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
-tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt", "time"] }
+tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt", "rt-multi-thread", "time"] }
+
+# Examples that talk to a server need the client; `codec` needs nothing.
+[[example]]
+name = "models"
+required-features = ["client"]
+
+[[example]]
+name = "complete"
+required-features = ["client"]
+
+[[example]]
+name = "stream"
+required-features = ["client"]
+
+[[example]]
+name = "chat"
+required-features = ["client"]
+
+[[example]]
+name = "attachments"
+required-features = ["client"]
+
+[[example]]
+name = "tools"
+required-features = ["client"]
+
+[[example]]
+name = "tools_typed"
+required-features = ["client", "schemars"]
+
+[[example]]
+name = "toolbox"
+required-features = ["client"]
+
+[[example]]
+name = "layers"
+required-features = ["client"]
+
+[[example]]
+name = "relay"
+required-features = ["client"]
 
 [lints.rust]
 unsafe_code = "forbid"

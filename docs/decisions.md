@@ -505,10 +505,20 @@ stands in for its length in tokens, which it never underestimates (but see O5).
   or content after the finish reason: complete with what was received, or fail?
 - **O13. The kind of an error inside an open stream.** It is a server-side failure, possibly
   transient, not a malformed stream. Today it maps to `Protocol`, which is not retryable. A
-  separate kind, and is it retryable?
+  separate kind, and is it retryable? It is not always transient: LM Studio reports a prompt
+  longer than the context this way (O15).
 - **O14. Failed tool results.** A `Toolbox` turns a failure into a tool result. Should
   `ToolResult` carry an `is_error` flag? Some APIs have one; Chat Completions would carry it only
   in the text.
+- **O15. A context overflow that carries no code.** `ContextOverflow` is recognized by
+  `error.code` on a 400, 413, or 422. LM Studio reports an overflow inside the stream with only a
+  message, so today it is the in-stream error of O13 with that message. Recognize it by the
+  message text (and llama.cpp's `error.type`), in the stream and in error bodies? Matching text is
+  brittle; not matching leaves the most common local server without the one kind an application
+  acts on by shortening the conversation.
+- **O16. Whitespace the server leaves before the answer.** LM Studio starts the answer with the
+  line breaks that followed the reasoning. svir passes the text on as it came. Trim it in the
+  decoder, or leave it to the caller?
 
 Resolved: O1 (API names and DX) by D13-D18, O2 (`<think>` splitting) by D23, O4 (server error
 messages) by D19, O3 (compatibility retry versus context overflow) by D26, O8 (tool arguments)
