@@ -70,6 +70,7 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo clippy --no-default-features --all-targets -- -D warnings
 cargo clippy --no-default-features --features client --all-targets -- -D warnings
+cargo clippy --no-default-features --features tls-aws-lc --all-targets -- -D warnings
 cargo clippy --all-features --all-targets -- -D warnings
 cargo test
 cargo test --all-features

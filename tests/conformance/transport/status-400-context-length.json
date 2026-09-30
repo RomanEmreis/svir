@@ -8,6 +8,6 @@
       "body": "{\"error\":{\"code\":\"context_length_exceeded\",\"message\":\"secret-server-detail\"}}"
     }
   ],
-  "calls": [{"expect": {"error": "context_overflow", "retryable": false}}],
+  "calls": [{"expect": {"error": "context_overflow", "retryable": false, "status": 400}}],
   "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
 }

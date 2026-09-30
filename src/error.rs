@@ -79,6 +79,8 @@ impl ErrorKind {
 pub struct Error {
     kind: ErrorKind,
     detail: Option<Cow<'static, str>>,
+    /// The HTTP status of a response that was not a success.
+    status: Option<u16>,
     retry_after: Option<Duration>,
     server_message: Option<Box<str>>,
     source: Option<Box<dyn StdError + Send + Sync>>,
@@ -92,6 +94,7 @@ impl Error {
         Self {
             kind,
             detail: None,
+            status: None,
             retry_after: None,
             server_message: None,
             source: None,
@@ -105,6 +108,12 @@ impl Error {
     /// [`with_server_message`](Self::with_server_message).
     pub fn with_detail(mut self, detail: impl Into<Cow<'static, str>>) -> Self {
         self.detail = Some(detail.into());
+        self
+    }
+
+    /// Adds the HTTP status of the response that was not a success.
+    pub fn with_status(mut self, status: u16) -> Self {
+        self.status = Some(status);
         self
     }
 
@@ -157,6 +166,16 @@ impl Error {
         self.unsent
     }
 
+    /// The HTTP status of the response, when the failure is one: the server answered with a status
+    /// that is not a success. `None` for everything else, including a failure inside a stream that
+    /// began with `200`.
+    ///
+    /// For a proxy that passes the upstream status on. Everything else should act on
+    /// [`kind`](Self::kind), which means the same whatever the server.
+    pub fn status(&self) -> Option<u16> {
+        self.status
+    }
+
     /// How long the server asked to wait before trying again, if it said.
     pub fn retry_after(&self) -> Option<Duration> {
         self.retry_after
@@ -195,6 +214,9 @@ impl fmt::Debug for Error {
         out.field("kind", &self.kind);
         if let Some(detail) = &self.detail {
             out.field("detail", detail);
+        }
+        if let Some(status) = &self.status {
+            out.field("status", status);
         }
         if let Some(delay) = &self.retry_after {
             out.field("retry_after", delay);
@@ -282,6 +304,14 @@ mod tests {
         );
         assert_eq!(error.retry_after(), Some(Duration::from_secs(2)));
         assert!(error.is_retryable());
+    }
+
+    #[test]
+    fn the_status_is_kept_and_shown() {
+        let error = Error::new(ErrorKind::Authentication).with_status(401);
+        assert_eq!(error.status(), Some(401));
+        assert!(format!("{error:?}").contains("status: 401"));
+        assert_eq!(Error::new(ErrorKind::Timeout).status(), None);
     }
 
     #[test]

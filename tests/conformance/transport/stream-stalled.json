@@ -11,7 +11,7 @@
   ],
   "calls": [
     {
-      "expect": {"error": "timeout", "retryable": true, "partial": {"text": "partial"}, "within_ms": 3000}
+      "expect": {"error": "timeout", "retryable": true, "status": null, "partial": {"text": "partial"}, "within_ms": 3000}
     }
   ],
   "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]

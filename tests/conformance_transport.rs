@@ -34,6 +34,7 @@ fn failed(error: &Error, text: &str, reasoning: &str) -> Value {
         "error": serde_json::to_value(error.kind()).unwrap(),
         "retryable": error.is_retryable(),
         "retry_after_ms": error.retry_after().map(|delay| delay.as_millis() as u64),
+        "status": error.status(),
         "message": error.server_message(),
         "partial": {"text": text, "reasoning": reasoning},
     })
@@ -148,7 +149,7 @@ fn compare(expected: &Value, got: &Value, elapsed: Duration) -> Vec<String> {
             return diffs;
         }
 
-        for field in ["retryable", "retry_after_ms", "message"] {
+        for field in ["retryable", "retry_after_ms", "status", "message"] {
             if let Some(want) = expected.get(field) {
                 if &got[field] != want {
                     diffs.push(format!("{field} {} != {want}", got[field]));
@@ -194,7 +195,7 @@ async fn run(dir: &Path, case: &Value) -> Vec<String> {
     if let Some(want) = case.get("expect_config") {
         for url in urls {
             // Without the `tls` feature an https URL is refused, whatever the case expects.
-            if url.starts_with("https:") && !cfg!(feature = "tls") {
+            if url.starts_with("https:") && !cfg!(any(feature = "tls", feature = "tls-aws-lc")) {
                 continue;
             }
             let got = match client(config, url) {

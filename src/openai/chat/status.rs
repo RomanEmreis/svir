@@ -47,7 +47,9 @@ pub(crate) fn classify(status: u16, retry_after: Option<&str>, body: &[u8]) -> E
         _ => ErrorKind::Unsupported,
     };
 
-    let mut error = Error::new(kind).with_detail(format!("HTTP {status}"));
+    let mut error = Error::new(kind)
+        .with_detail(format!("HTTP {status}"))
+        .with_status(status);
 
     let delay = retry_after
         .and_then(|value| value.trim().parse::<u64>().ok())

@@ -8,6 +8,6 @@
       "body": "{\"error\":{\"code\":\"rate_limit\",\"message\":\"secret-server-detail\"}}"
     }
   ],
-  "calls": [{"expect": {"error": "rate_limited", "retryable": true, "retry_after_ms": null}}],
+  "calls": [{"expect": {"error": "rate_limited", "retryable": true, "retry_after_ms": null, "status": 429}}],
   "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
 }

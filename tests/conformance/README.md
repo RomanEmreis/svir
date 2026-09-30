@@ -36,7 +36,7 @@ One JSON file per case. Recorded fixtures (`*.sse`) sit next to the cases that u
 
 - `think`: `"split"` routes `<think>...</think>` in the content to reasoning; `"keep"` leaves it in
   the text. The default is `"split"` (D23); cases with `<think>` tags state it anyway.
-- `limits`: any of `wire_bytes` (default 4194304), `event_bytes` (default 262144), and
+- `limits`: any of `wire_bytes` (default 67108864), `event_bytes` (default 262144), and
   `tool_calls` (default 64).
 
 A case runs once for every combination of mode, line ending, and stride.
@@ -190,7 +190,9 @@ A call is `{"request", "list_models", "client", "expect"}`:
   or an error, `{"read_events": n}` reads n events, `{"read_for_ms": n}` reads for at most n
   milliseconds, and `"cancel"` drops the stream.
 - `expect` is a decoder outcome, with these additions:
-  - errors carry `retryable` and `retry_after_ms` (`null` when there is no delay);
+  - errors carry `retryable`, `retry_after_ms` (`null` when there is no delay), and `status`:
+    the HTTP status of a response that was not a success, `null` for a failure that is not a
+    status, such as a timeout or an error inside a stream that began with `200`;
   - `{"cancelled": true, "partial": ...}` after `"cancel"`;
   - `{"models": [{"id": ..., "name": ...}]}` for a listing (`name` is `null` when absent);
   - `within_ms`: the outcome arrives within this many milliseconds of the call starting.

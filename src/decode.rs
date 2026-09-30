@@ -37,7 +37,8 @@ pub enum Think {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Limits {
-    /// Bytes of the whole response. Default 4 MiB.
+    /// Bytes of the whole response, as they arrive: every event with its framing and metadata,
+    /// a few hundred bytes a token. Default 64 MiB. The decoder keeps the answer, not these bytes.
     pub wire_bytes: usize,
     /// Bytes of one server-sent event. Default 256 KiB.
     pub event_bytes: usize,
@@ -48,7 +49,7 @@ pub struct Limits {
 impl Default for Limits {
     fn default() -> Self {
         Self {
-            wire_bytes: 4 * 1024 * 1024,
+            wire_bytes: 64 * 1024 * 1024,
             event_bytes: 256 * 1024,
             tool_calls: 64,
         }
@@ -86,7 +87,7 @@ mod tests {
         let limits = Limits::default();
         assert_eq!(
             (limits.wire_bytes, limits.event_bytes, limits.tool_calls),
-            (4_194_304, 262_144, 64)
+            (67_108_864, 262_144, 64)
         );
         assert_eq!(Limits::default().tool_calls(1).tool_calls, 1);
     }

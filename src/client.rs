@@ -605,8 +605,12 @@ fn base_url(url: &str, allow_http: bool) -> Result<String, Error> {
         return Err(config("the base URL has a query"));
     }
     match scheme {
-        "https" if cfg!(feature = "tls") => {}
-        "https" => return Err(config("an https URL needs the `tls` feature")),
+        "https" if cfg!(any(feature = "tls", feature = "tls-aws-lc")) => {}
+        "https" => {
+            return Err(config(
+                "an https URL needs the `tls` or the `tls-aws-lc` feature",
+            ));
+        }
         "http" if allow_http || is_loopback(authority.host()) => {}
         "http" => {
             return Err(config(

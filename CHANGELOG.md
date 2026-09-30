@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## 0.1.1
 
+### Added
+
+* **`Error::status()`**: the HTTP status of a response that was not a
+  success, for a proxy that passes the upstream status on. `None` for every
+  other failure, including an error inside a stream that began with `200`.
+* **The `tls-aws-lc` feature**: HTTPS with the aws-lc-rs crypto provider in
+  place of ring. A build that already has aws-lc-rs can take
+  `default-features = false, features = ["client", "tls-aws-lc"]` and compile
+  one provider only. With two providers compiled in, rustls has no default
+  one, and other code that relies on it (`ClientConfig::builder()`) panics.
+
+### Changed
+
+* **The default wire limit is 64 MiB**, up from 4 MiB. A streamed answer
+  spends a few hundred bytes a token on the wire, so 4 MiB cut off an answer
+  after about 16,000 tokens, which a reasoning model can pass. The decoder
+  keeps the answer, not the wire bytes.
+
 ### Fixed
 
 * **Inline `<think>` tags are split out when a delta is nothing but part of
