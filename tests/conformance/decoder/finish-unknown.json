@@ -1,0 +1,6 @@
+{
+  "description": "A finish reason outside stop, tool_calls, length, and content_filter. It may mean the answer is not what it seems, so it fails in both modes.",
+  "file": "final.sse",
+  "replace": [["\"stop\"", "\"function_call\""]],
+  "expect": {"strict": {"error": "unsupported"}, "lenient": "same"}
+}

@@ -1,10 +1,10 @@
 {
-  "description": "Content arrives after the finish reason.",
+  "description": "Content arrives after the finish reason. The server contradicts itself about where the answer ends, so it fails in both modes.",
   "chunks": [
     "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"a\"},\"finish_reason\":\"stop\"}]}\n\n",
     "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"b\"},\"finish_reason\":null}]}\n\n",
     "data: [DONE]\n\n"
   ],
   "strides": [1, 3, 8192],
-  "expect": {"strict": {"error": "unsupported"}, "lenient": {"open": "O12"}}
+  "expect": {"strict": {"error": "unsupported"}, "lenient": "same"}
 }

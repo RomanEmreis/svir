@@ -100,6 +100,8 @@ pub enum FinishReason {
     ToolCalls,
     /// The output limit cut the answer off.
     Length,
+    /// The server's content filter stopped the answer; the text before it is kept.
+    ContentFilter,
 }
 
 /// Token counts, as the server reported them.

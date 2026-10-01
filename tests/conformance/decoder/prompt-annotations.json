@@ -1,0 +1,11 @@
+{
+  "description": "The prompt report under its older name, prompt_annotations, which earlier Azure API versions send. It is skipped like prompt_filter_results.",
+  "chunks": [
+    "data: {\"id\":\"\",\"object\":\"\",\"created\":0,\"model\":\"\",\"prompt_annotations\":[{\"prompt_index\":0,\"content_filter_results\":{\"hate\":{\"filtered\":false,\"severity\":\"safe\"}}}],\"choices\":[],\"usage\":null}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\",\"content\":\"ok\"}}],\"usage\":null}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":null}\n\n",
+    "data: [DONE]\n\n"
+  ],
+  "strides": [1, 3, 8192],
+  "expect": {"strict": {"completion": {"finish": "stop", "text": "ok"}}, "lenient": "same"}
+}

@@ -1,6 +1,15 @@
 {
-  "description": "A finish reason outside stop, tool_calls, and length.",
+  "description": "The server's content filter stopped the answer. It is an outcome, not a malformed stream: the text that arrived before the filter is the answer.",
   "file": "final.sse",
   "replace": [["\"stop\"", "\"content_filter\""]],
-  "expect": {"strict": {"error": "unsupported"}, "lenient": {"open": "O12"}}
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "content_filter",
+        "text": "42",
+        "usage": {"input": 24, "output": 3, "total": 27}
+      }
+    },
+    "lenient": "same"
+  }
 }

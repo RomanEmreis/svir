@@ -194,6 +194,11 @@ impl Decoder {
             return Err(server_error(error));
         }
 
+        // Azure reports its prompt filter in a chunk of its own, with an empty id and model.
+        if is_prompt_report(chunk) {
+            return Ok(());
+        }
+
         self.metadata(chunk)?;
 
         if let Some(usage) = present(chunk, "usage") {
@@ -291,6 +296,7 @@ impl Decoder {
                 Some("stop") => FinishReason::Stop,
                 Some("tool_calls") => FinishReason::ToolCalls,
                 Some("length") => FinishReason::Length,
+                Some("content_filter") => FinishReason::ContentFilter,
                 Some(_) => return Err(unsupported("a finish reason outside the protocol")),
                 None => return Err(protocol("a finish reason is not a string")),
             });
@@ -524,6 +530,13 @@ impl Decoder {
 /// A field that is present and not null.
 fn present<'a>(object: &'a Map<String, Value>, key: &str) -> Option<&'a Value> {
     object.get(key).filter(|value| !value.is_null())
+}
+
+/// Whether a chunk is a report on the prompt: no choices, and the prompt filter's results under
+/// their current name or the one earlier API versions used.
+fn is_prompt_report(chunk: &Map<String, Value>) -> bool {
+    (chunk.contains_key("prompt_filter_results") || chunk.contains_key("prompt_annotations"))
+        && matches!(chunk.get("choices"), Some(Value::Array(choices)) if choices.is_empty())
 }
 
 fn protocol(detail: &'static str) -> Error {

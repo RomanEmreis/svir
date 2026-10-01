@@ -454,6 +454,19 @@ alone took the default away from the rest of the build.
   default is back. With both features on, aws-lc-rs is used.
 - Whichever it is, svir passes it to rustls explicitly and never depends on the default.
 
+### D35. A filtered answer is its own finish reason; other answer-changing anomalies fail
+
+A content filter that stops the answer is an outcome, not a malformed stream: the server says why
+it stopped, and the text before that point was sent and passed the filter. It is
+`FinishReason::ContentFilter` in both modes, and the completion keeps that text, so a caller can
+show it and say why it ends. Tool calls with it are `Protocol`, as with `stop`: the filter may
+have cut a call short, and a call is released only whole (D5).
+
+Any other finish reason svir does not know, and content after the finish reason, are
+`Unsupported` in both modes. An unknown reason may mean the answer is not what it looks like;
+content after the finish is a server that contradicts itself about where the answer ends. Lenient
+mode does not produce an answer that may be wrong (P8). Resolves O12.
+
 
 ### P1. Edition 2024; MSRV 1.85
 
@@ -512,7 +525,8 @@ Lenient skips unknown input (SSE fields, unparseable `data`, unknown delta keys,
 empty `choices` chunks) and tolerates inconsistent metadata (`id` or `model` changes, usage
 reported twice or without its required fields). It never relaxes answer integrity: limits,
 truncation, and tool-call consistency are enforced in both modes. A chat UI can still show the
-partial text that arrived before such an error. Anomalies that change the answer itself are O12.
+partial text that arrived before such an error. Anomalies that change the answer itself fail in
+both modes, except a filtered answer, which is its own finish reason (D35).
 
 ### P9. The outcome does not depend on chunking
 
@@ -573,8 +587,6 @@ stands in for its length in tokens, which it never underestimates (but see O5).
 - **O7. `Retry-After` as an HTTP date.** Only numeric seconds are handled today.
 - **O9. An optional loop helper.** See D6.
 - **O10. Model listing.** Is the non-chat model filter part of svir or of the application?
-- **O12. Answer-changing anomalies in lenient mode.** An unknown finish reason (`content_filter`)
-  or content after the finish reason: complete with what was received, or fail?
 - **O14. Failed tool results.** A `Toolbox` turns a failure into a tool result. Should
   `ToolResult` carry an `is_error` flag? Some APIs have one; Chat Completions would carry it only
   in the text.
@@ -582,4 +594,5 @@ stands in for its length in tokens, which it never underestimates (but see O5).
 Resolved: O1 (API names and DX) by D13-D18, O2 (`<think>` splitting) by D23, O4 (server error
 messages) by D19, O3 (compatibility retry versus context overflow) by D26, O8 (tool arguments)
 by D18, O11 (assistant content with tool calls) by D24, O13 (errors inside the stream) by D29,
-O15 (an overflow without a code) by D30, O16 (whitespace before the answer) by D31.
+O15 (an overflow without a code) by D30, O16 (whitespace before the answer) by D31, O12
+(answer-changing anomalies in lenient mode) by D35.
