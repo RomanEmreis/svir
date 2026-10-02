@@ -457,7 +457,8 @@ alone took the default away from the rest of the build.
 ### D35. A filtered answer is its own finish reason; other answer-changing anomalies fail
 
 A content filter that stops the answer is an outcome, not a malformed stream: the server says why
-it stopped, and the text before that point was sent and passed the filter. It is
+it stopped, and the text before that point was sent. In Azure's default streaming mode it also
+passed the filter; an asynchronous filter is not read yet (#12). It is
 `FinishReason::ContentFilter` in both modes, and the completion keeps that text, so a caller can
 show it and say why it ends. Tool calls with it are `Protocol`, as with `stop`: the filter may
 have cut a call short, and a call is released only whole (D5).

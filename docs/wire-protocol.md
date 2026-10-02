@@ -197,7 +197,7 @@ stream. Recorded from an Azure AI Foundry deployment in its default streaming mo
 From Azure's documentation, not recorded yet:
 
 - When the filter stops the answer, the last choice chunk has `finish_reason: "content_filter"`.
-  What came before it passed the filter and was sent.
+  In the default mode, what came before it passed the filter and was sent.
 - A deployment can opt into an asynchronous filter: the answer streams unfiltered, and annotation
   chunks follow it. An annotation is a choice with `content_filter_results` and
   `content_filter_offsets` and no `delta`, in a chunk whose `id` and `model` are empty. Annotations
