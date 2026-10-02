@@ -13,7 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   answer. The completion keeps the text that came before it, so a caller can
   show it and say why it ends. It was `Unsupported` in both modes before. Tool
   calls with this finish are a `Protocol` error, as with `Stop`: the filter may
-  have cut a call short.
+  have cut a call short. Azure's asynchronous content filter, which vets text
+  after streaming it, is not read yet: its annotations are `Unsupported` in
+  both modes, so text it has not vetted never completes as an answer.
 
 ### Changed
 

@@ -199,6 +199,13 @@ impl Decoder {
             return Ok(());
         }
 
+        // Azure's asynchronous filter vets text it already streamed; svir does not read it yet.
+        if is_annotation(chunk) {
+            return Err(unsupported(
+                "an annotation from an asynchronous content filter",
+            ));
+        }
+
         self.metadata(chunk)?;
 
         if let Some(usage) = present(chunk, "usage") {
@@ -537,6 +544,12 @@ fn present<'a>(object: &'a Map<String, Value>, key: &str) -> Option<&'a Value> {
 fn is_prompt_report(chunk: &Map<String, Value>) -> bool {
     (chunk.contains_key("prompt_filter_results") || chunk.contains_key("prompt_annotations"))
         && matches!(chunk.get("choices"), Some(Value::Array(choices)) if choices.is_empty())
+}
+
+/// Whether a chunk annotates text already sent: a choice with the offsets of what it vetted.
+fn is_annotation(chunk: &Map<String, Value>) -> bool {
+    matches!(chunk.get("choices"), Some(Value::Array(choices))
+        if choices.iter().any(|choice| choice.get("content_filter_offsets").is_some()))
 }
 
 fn protocol(detail: &'static str) -> Error {

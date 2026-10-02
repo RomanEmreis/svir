@@ -458,10 +458,13 @@ alone took the default away from the rest of the build.
 
 A content filter that stops the answer is an outcome, not a malformed stream: the server says why
 it stopped, and the text before that point was sent. In Azure's default streaming mode it also
-passed the filter; an asynchronous filter is not read yet (#12). It is
-`FinishReason::ContentFilter` in both modes, and the completion keeps that text, so a caller can
-show it and say why it ends. Tool calls with it are `Protocol`, as with `stop`: the filter may
-have cut a call short, and a call is released only whole (D5).
+passed the filter. It is `FinishReason::ContentFilter` in both modes, and the completion keeps
+that text, so a caller can show it and say why it ends. Tool calls with it are `Protocol`, as
+with `stop`: the filter may have cut a call short, and a call is released only whole (D5).
+
+An asynchronous filter vets text it already streamed, in annotations, and is not read yet (#12).
+An annotation is `Unsupported` in both modes, so text the filter has not vetted never completes
+as an answer, filtered or not.
 
 Any other finish reason svir does not know, and content after the finish reason, are
 `Unsupported` in both modes. An unknown reason may mean the answer is not what it looks like;

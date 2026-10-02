@@ -218,6 +218,7 @@ Enforced the same way in both modes (P8):
 | `tool_calls` finish without calls, or calls with a `stop` or `content_filter` finish | `Protocol` |
 | A finish reason other than `stop`, `tool_calls`, `length`, and `content_filter` (D35) | `Unsupported` |
 | Content after the finish reason (D35) | `Unsupported` |
+| An annotation from an asynchronous content filter: a choice with `content_filter_offsets` (D35) | `Unsupported` |
 
 Two SSE details are framing, not leniency, and hold in both modes: several `data` lines in one
 event join with a newline, and both `reasoning_content` and `reasoning` are reasoning.
