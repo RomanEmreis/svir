@@ -329,7 +329,7 @@ with TLS), and the TLS build needs no cmake.
 
 Resolves O3. A 400 or 422 whose `error.code` says the context overflowed is not about the optional
 fields, so it is reported at once, without the lean retry of D11. The same holds for an overflow
-recognized by its type or its message (D30).
+recognized by its type or its message (D30), and for a prompt the content filter blocked (D36).
 
 ### D27. Nothing on the request path is boxed or dispatched dynamically
 
@@ -457,19 +457,61 @@ alone took the default away from the rest of the build.
 ### D35. A filtered answer is its own finish reason; other answer-changing anomalies fail
 
 A content filter that stops the answer is an outcome, not a malformed stream: the server says why
-it stopped, and the text before that point was sent. In Azure's default streaming mode it also
-passed the filter. It is `FinishReason::ContentFilter` in both modes, and the completion keeps
-that text, so a caller can show it and say why it ends. Tool calls with it are `Protocol`, as
-with `stop`: the filter may have cut a call short, and a call is released only whole (D5).
+it stopped, and the text before that point was sent. It is `FinishReason::ContentFilter` in both
+modes, and the completion keeps that text as the server sent it (D31), so a caller can show it
+and say why it ends. That text may hold what the filter flagged: an asynchronous filter vets it
+only after streaming it, and even without one Azure was recorded streaming a blocklisted word
+before the block. A caller that shows the text withdraws it on this finish. Tool calls with it
+are `Protocol`, as with `stop`: the filter may have cut a call short, or flagged it, and a call
+is released only whole and clean (D5).
 
-An asynchronous filter vets text it already streamed, in annotations, and is not read yet (#12).
-An annotation is `Unsupported` in both modes, so text the filter has not vetted never completes
-as an answer, filtered or not.
+An asynchronous filter streams the answer unvetted and reports on it afterwards, in annotations:
+a choice with `content_filter_offsets` and no delta, in a chunk with an empty `id` and `model`.
+An annotation carries nothing of the answer, so it is not content, and its `id` and `model` are
+not the stream's. Annotations interleave with the answer and follow its finish, and a block is
+the answer's finish, `ContentFilter`, wherever it comes:
+
+- an annotation whose `content_filter_results` mark a category or a blocklist `filtered: true`
+  is a block, with or without a finish reason. Recorded, a blocklisted word the filter caught
+  only after the model's `stop` came this way, with `finish_reason: null`, and the answer that
+  held it ten times would otherwise complete as clean. The verdict is kept, not its place, so
+  content after it is not content after the finish;
+- `content_filter` as an annotation's finish reason is a block too, as the filter sends it while
+  the answer is still streaming, and the stream ends there;
+- `detected: true` without `filtered` is what a filter set to annotate only reports, and blocks
+  nothing; an annotation that blocks nothing is skipped, before the finish or after it;
+- any other finish reason in an annotation is `Unsupported`.
+
+The filter's verdict on text already sent is the stronger statement: a block turns the model's
+`stop`, `length`, or `tool_calls` into `ContentFilter`. The offsets are not passed on. They are
+documented to count characters from the start of the prompt as the server rendered it, which
+svir cannot map onto the answer's text, and recorded they do not behave as documented (see
+[wire-protocol.md](wire-protocol.md#37-content-filtering)).
 
 Any other finish reason svir does not know, and content after the finish reason, are
 `Unsupported` in both modes. An unknown reason may mean the answer is not what it looks like;
 content after the finish is a server that contradicts itself about where the answer ends. Lenient
 mode does not produce an answer that may be wrong (P8). Resolves O12.
+
+*Revised 2026-10-02: annotations were `Unsupported` in both modes, until they were read (#12);
+the text before a `ContentFilter` finish was said to have passed the filter in Azure's default
+mode, until a recording showed otherwise.*
+
+### D36. A prompt the content filter blocked is its own error kind
+
+A content filter that blocks the prompt rejects the request with 400 and `error.code` of
+`content_filter` (Azure OpenAI). That is not a server that cannot do something, so it is not
+`Unsupported`: it is `ContentFilter`, not retryable, since the same prompt is blocked again. It
+sits next to `FinishReason::ContentFilter` (D35), the filter stopping an answer.
+
+It is told by the code alone, in the body of a 400, 413, or 422, as an overflow is (D30); the
+code is specific, so a match cannot be false. The words of the message are not read, and the
+code means nothing on any other status.
+
+Such a rejection is not about the optional fields, so it is reported without the compatibility
+retry (D11), as an overflow is (D26). Otherwise the blocked prompt is sent twice, and its
+evaluation billed twice. More generally, the retry follows only a rejection whose body explains
+nothing, `Unsupported`.
 
 
 ### P1. Edition 2024; MSRV 1.85

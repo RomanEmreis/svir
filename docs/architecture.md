@@ -218,15 +218,18 @@ Enforced the same way in both modes (P8):
 | `tool_calls` finish without calls, or calls with a `stop` or `content_filter` finish | `Protocol` |
 | A finish reason other than `stop`, `tool_calls`, `length`, and `content_filter` (D35) | `Unsupported` |
 | Content after the finish reason (D35) | `Unsupported` |
-| An annotation from an asynchronous content filter: a choice with `content_filter_offsets` (D35) | `Unsupported` |
+| An annotation from an asynchronous content filter with a finish reason other than `content_filter` (D35) | `Unsupported` |
 
 Two SSE details are framing, not leniency, and hold in both modes: several `data` lines in one
 event join with a newline, and both `reasoning_content` and `reasoning` are reasoning.
 
 A prompt report, a chunk with an empty `choices` array and `prompt_filter_results` (or the older
 `prompt_annotations`), is known input: it carries nothing of the answer and is skipped whole in
-both modes, its empty `id` and `model` included. A call ID
-repeated on later pieces of the same call is consistent; one that changes is not (P10).
+both modes, its empty `id` and `model` included. So is an annotation from an asynchronous content
+filter, a choice with `content_filter_offsets` and no delta, before the finish reason or after
+it, unless it blocks: a verdict marked `filtered: true`, or a `content_filter` finish, makes the
+answer's finish `ContentFilter`, even after the model's own (D35). A call ID repeated on later
+pieces of the same call is consistent; one that changes is not (P10).
 
 Limits and their current defaults: 64 MiB of wire bytes per attempt (D32), 256 KiB per SSE
 event, and 64 tool calls per response.
@@ -298,8 +301,8 @@ rejection of a request that carried optional fields triggers one retry without t
 succeeds, the server is remembered as strict and later requests omit those fields from the first
 attempt. If the retry fails too, the original error is reported. The memory lives in a
 cheap-to-clone handle shared by every request to that server. A 400/422 means nothing was
-generated, so this retry is safe. A 400 or 422 that is a context overflow is not about those
-fields and is reported without the retry (D26).
+generated, so this retry is safe. A 400 or 422 that is a context overflow, or a prompt the
+content filter blocked, is not about those fields and is reported without the retry (D26, D36).
 
 ### 4.8 Errors
 
@@ -313,6 +316,7 @@ Every failure is a typed kind with a `retryable` flag and an optional retry dela
 | `TruncatedStream` | yes | Stream ended before a finish reason and `[DONE]` |
 | `Authentication` | no | HTTP 401, 403 |
 | `ContextOverflow` | no | An overflow told by its code, type, or message, on 400/413/422 or inside the stream (D30); or local admission failed |
+| `ContentFilter` | no | The server's content filter blocked the prompt: `error.code` of `content_filter` on 400/413/422 (D36) |
 | `Protocol` | no | Malformed or inconsistent stream |
 | `Server` | no | The server reported a failure inside the stream (D29) |
 | `Unsupported` | no | A feature the adapter cannot represent; a success that is not `text/event-stream`; any other status, redirects included |

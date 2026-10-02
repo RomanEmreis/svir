@@ -29,6 +29,10 @@ pub enum ErrorKind {
     Authentication,
     /// The request does not fit in the model's context.
     ContextOverflow,
+    /// The model server's content filter blocked the prompt. It is not retryable: the prompt has
+    /// to change. An answer the filter stopped is not an error but
+    /// [`FinishReason::ContentFilter`](crate::FinishReason::ContentFilter).
+    ContentFilter,
     /// The model server sent a malformed or inconsistent response.
     Protocol,
     /// The model server reported a failure of its own while answering: an error inside the
@@ -61,6 +65,7 @@ impl ErrorKind {
             Self::TruncatedStream => "the stream ended before the answer was complete",
             Self::Authentication => "the model server refused the credentials",
             Self::ContextOverflow => "the request does not fit in the model's context",
+            Self::ContentFilter => "the model server's content filter blocked the prompt",
             Self::Protocol => "the model server sent a malformed or inconsistent response",
             Self::Server => "the model server failed while answering",
             Self::Unsupported => "the request or the response uses something svir cannot represent",
@@ -256,6 +261,7 @@ mod tests {
         let not_retryable = [
             Authentication,
             ContextOverflow,
+            ContentFilter,
             Protocol,
             Server,
             Unsupported,

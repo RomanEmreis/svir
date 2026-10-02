@@ -10,8 +10,11 @@ use crate::{Error, ErrorKind};
 /// A retry delay the server asks for is honored up to this.
 const RETRY_AFTER_LIMIT: Duration = Duration::from_secs(30);
 
+/// The `error.code` of a prompt the server's content filter blocked.
+const FILTERED: &str = "content_filter";
+
 /// Whether the kind of this status depends on the response body: a rejected request may be a
-/// context overflow, which only the body tells.
+/// context overflow or a blocked prompt, which only the body tells.
 pub(crate) fn kind_is_in_body(status: u16) -> bool {
     matches!(status, 400 | 413 | 422)
 }
@@ -32,7 +35,14 @@ pub(crate) fn classify(status: u16, retry_after: Option<&str>, body: &[u8]) -> E
             .map(|text| text.trim().to_owned()),
     };
 
-    // A rejected request is an overflow when its error names one, or its message says so (D30).
+    // A rejected request is a blocked prompt when its error code says so (D36), and an overflow
+    // when its error names one, or its message says so (D30).
+    let filtered = || {
+        reported
+            .and_then(|error| error.get("code"))
+            .and_then(Value::as_str)
+            == Some(FILTERED)
+    };
     let overflowed = || {
         reported.is_some_and(overflow::is_overflow)
             || message.as_deref().is_some_and(overflow::says_overflow)
@@ -43,6 +53,7 @@ pub(crate) fn classify(status: u16, retry_after: Option<&str>, body: &[u8]) -> E
         429 => ErrorKind::RateLimited,
         408 | 504 => ErrorKind::Timeout,
         500 | 502 | 503 => ErrorKind::Transport,
+        400 | 413 | 422 if filtered() => ErrorKind::ContentFilter,
         400 | 413 | 422 if overflowed() => ErrorKind::ContextOverflow,
         _ => ErrorKind::Unsupported,
     };
@@ -121,6 +132,22 @@ mod tests {
             kind(400, r#"{"error":{"message":"bad field"}}"#),
             ErrorKind::Unsupported
         );
+    }
+
+    #[test]
+    fn a_blocked_prompt_is_told_by_its_code() {
+        let filtered = r#"{"error":{"message":"The response was filtered","type":null,"param":"prompt","code":"content_filter","status":400}}"#;
+        assert_eq!(kind(400, filtered), ErrorKind::ContentFilter);
+        assert_eq!(kind(422, filtered), ErrorKind::ContentFilter);
+        // The code means nothing on a status that is not a rejected request.
+        assert_eq!(kind(500, filtered), ErrorKind::Transport);
+
+        // Only the code tells it: not the words, and not the type.
+        let said = r#"{"error":{"message":"content_filter"}}"#;
+        let typed = r#"{"error":{"type":"content_filter","message":"x"}}"#;
+        assert_eq!(kind(400, said), ErrorKind::Unsupported);
+        assert_eq!(kind(400, typed), ErrorKind::Unsupported);
+        assert!(!classify(400, None, filtered.as_bytes()).is_retryable());
     }
 
     #[test]

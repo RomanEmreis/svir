@@ -1,0 +1,14 @@
+{
+  "description": "Recorded from Azure OpenAI with the asynchronous content filter on the deployment: annotations interleave with the answer, repeat, and follow its stop, before the usage chunk. None blocks anything, so the answer stands in both modes.",
+  "file": "azure-async.sse",
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "stop",
+        "text": "Sorry, I can\u2019t provide the full lyrics to \u201cHey Jude.\u201d I can summarize it: the song encourages someone named Jude to face heartbreak with hope, accept comfort, and turn sadness into something better. I can also analyze its meaning or help you find an authorized lyrics source.",
+        "usage": {"input": 15, "output": 174, "total": 189, "reasoning": 109}
+      }
+    },
+    "lenient": "same"
+  }
+}

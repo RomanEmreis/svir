@@ -9,7 +9,7 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
    results, events and completions, usage and timing, the error taxonomy, `Limits`, `Mode`, and
    `Think`. Their serde form is pinned against the conformance notation.
 3. **Decoder.** Done: `svir::openai::chat::Decoder` with SSE framing, tool-call assembly,
-   limits, `<think>` splitting, live reasoning, strict and lenient modes, and timing. All 59 decoder
+   limits, `<think>` splitting, live reasoning, strict and lenient modes, and timing. All 68 decoder
    cases pass in `tests/conformance_decoder.rs`.
 4. **Encoder.** Done: `svir::openai::chat::Encoder` and `Body`, with the exact length,
    attachments from memory and from disk, tools, tool calls and results, reasoning sent back, and
@@ -17,7 +17,7 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
    and from memory.
 5. **Transport and compatibility.** Done: `Client` and its builder, `EventStream`, the HTTP seam
    with the hyper backend, authentication, status mapping, timeouts, cancellation, optional-field
-   learning, and model listing. All 47 transport cases pass in `tests/conformance_transport.rs`;
+   learning, and model listing. All 49 transport cases pass in `tests/conformance_transport.rs`;
    the `Retry-After` date case (O7) is pending.
 6. **Layers.** Done: `svir::layer::{Layer, Next}`, `.layer(..)` and `.wrap(..)`, `Retry`,
    `Timeout`, and `Trace`, with the stream methods they use (D28). Tested against a scripted
@@ -39,11 +39,11 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
 The suite is data: see [tests/conformance](../tests/conformance/README.md) for the format. It is
 written for all three components:
 
-- `decoder/`: 53 cases. Framing, reasoning and `<think>` splitting, tool-call assembly, usage,
+- `decoder/`: 68 cases. Framing, reasoning and `<think>` splitting, tool-call assembly, usage,
   limits, errors inside the stream, and strict and lenient outcomes for each.
 - `encoder/`: 22 cases. Content layout, attachments at every size around the block size, exact
   length and repeatability, reasoning and tool round trips, admission.
-- `transport/`: 47 cases. Authentication, status mapping, the stream, timeouts, cancellation,
+- `transport/`: 49 cases. Authentication, status mapping, the stream, timeouts, cancellation,
   base URLs, model listing, and compatibility learning, against a scripted loopback server.
 
 Cases that depend on an open decision name it in `open`. Not expressible as data:

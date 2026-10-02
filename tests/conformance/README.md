@@ -9,9 +9,9 @@ on an open decision lists it in `open`.
 
 | Directory | Covers | Status |
 | --- | --- | --- |
-| `decoder/` | SSE framing, deltas, reasoning, tool calls, usage, limits, errors inside the stream, strict and lenient | 59 cases, run by `tests/conformance_decoder.rs` |
+| `decoder/` | SSE framing, deltas, reasoning, tool calls, usage, limits, errors inside the stream, strict and lenient | 68 cases, run by `tests/conformance_decoder.rs` |
 | `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, admission | 22 cases, run by `tests/conformance_encoder.rs` |
-| `transport/` | Authentication, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 47 cases, run by `tests/conformance_transport.rs` |
+| `transport/` | Authentication, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 49 cases, run by `tests/conformance_transport.rs` |
 
 ## Decoder cases
 
@@ -80,7 +80,7 @@ An error:
 
 | Field | Meaning |
 | --- | --- |
-| `error` | The kind: `transport`, `timeout`, `rate_limited`, `truncated_stream`, `authentication`, `context_overflow`, `protocol`, `server`, `unsupported`, or `response_limit`. |
+| `error` | The kind: `transport`, `timeout`, `rate_limited`, `truncated_stream`, `authentication`, `context_overflow`, `content_filter`, `protocol`, `server`, `unsupported`, or `response_limit`. |
 | `partial` | Text and reasoning deltas delivered before the error, each concatenated. Each field is compared only when present. |
 | `message` | The server's own message. Compared only when present. |
 
@@ -98,6 +98,8 @@ runner skips it.
 | `final.sse` | A short text answer, `stop` finish, trailing usage chunk. |
 | `final-no-usage.sse` | `final.sse` without the usage chunk. |
 | `azure.sse` | Recorded from Azure OpenAI: a prompt report with no choices and an empty `id` and `model`, content-filter results on every choice, `stop` finish, usage chunk with reasoning tokens. |
+| `azure-async.sse` | Recorded from Azure OpenAI with the asynchronous content filter: annotations that block nothing interleave with the answer and follow its `stop`, before the usage chunk. |
+| `azure-async-flagged.sse` | Recorded from Azure OpenAI with the asynchronous content filter and a blocklist: the answer holds the blocked word, the model finishes with `stop`, and an annotation after it marks the blocklist `filtered: true` with no finish reason. |
 
 ## Requests
 

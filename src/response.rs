@@ -100,7 +100,11 @@ pub enum FinishReason {
     ToolCalls,
     /// The output limit cut the answer off.
     Length,
-    /// The server's content filter stopped the answer; the text before it is kept.
+    /// The server's content filter stopped the answer, or flagged it after streaming it; the
+    /// text that was sent is kept.
+    ///
+    /// That text may hold what the filter flagged: an asynchronous filter vets it only after it
+    /// was streamed, even after the model finished. A caller that shows it withdraws it.
     ContentFilter,
 }
 
