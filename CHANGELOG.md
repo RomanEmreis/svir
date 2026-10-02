@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.1.2
+
+### Added
+
+* **`FinishReason::ContentFilter`**: the server's content filter stopped the
+  answer. The completion keeps the text that came before it, so a caller can
+  show it and say why it ends. It was `Unsupported` in both modes before. Tool
+  calls with this finish are a `Protocol` error, as with `Stop`: the filter may
+  have cut a call short. Azure's asynchronous content filter, which vets text
+  after streaming it, is not read yet: its annotations are `Unsupported` in
+  both modes, so text it has not vetted never completes as an answer.
+
+### Changed
+
+* **Lenient mode fails on an unknown finish reason and on content after the
+  finish reason**, as strict mode does. Both were pending a decision and
+  already failed; this is now the settled behavior (D35).
+
+### Fixed
+
+* **Azure OpenAI streams decode in strict mode.** Azure starts the stream with
+  a report on the prompt: a chunk with no choices, an empty `id` and `model`,
+  and `prompt_filter_results`. Strict mode failed on it with "an empty choices
+  array before the finish reason". It carries nothing of the answer and is now
+  skipped in both modes, under its older name `prompt_annotations` too.
+
 ## 0.1.1
 
 ### Added

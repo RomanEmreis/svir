@@ -1,0 +1,14 @@
+{
+  "description": "Azure reports its prompt filter in a chunk of its own before the answer: no choices, an empty id and model. It carries nothing of the answer, so it is skipped in both modes, and the empty id and model are not the stream's.",
+  "file": "azure.sse",
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "stop",
+        "text": "Hi! How can I help?",
+        "usage": {"input": 7, "output": 30, "total": 37, "reasoning": 14}
+      }
+    },
+    "lenient": "same"
+  }
+}

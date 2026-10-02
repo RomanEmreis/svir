@@ -1,0 +1,6 @@
+{
+  "description": "Tool calls with a content_filter finish. The filter may have cut a call short, so none is released.",
+  "file": "tools.sse",
+  "replace": [["\"finish_reason\":\"tool_calls\"", "\"finish_reason\":\"content_filter\""]],
+  "expect": {"strict": {"error": "protocol"}, "lenient": "same"}
+}

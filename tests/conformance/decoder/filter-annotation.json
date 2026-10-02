@@ -1,0 +1,11 @@
+{
+  "description": "An annotation from Azure's asynchronous content filter: a choice with content_filter_offsets and no delta, in a chunk with an empty id and model, about text already streamed unvetted. svir does not read this filter yet, so the stream fails in both modes rather than complete with that text.",
+  "chunks": [
+    "data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\",\"content\":\"Color is\"}}],\"usage\":null}\n\n",
+    "data: {\"id\":\"\",\"object\":\"\",\"created\":0,\"model\":\"\",\"choices\":[{\"index\":0,\"finish_reason\":null,\"content_filter_results\":{\"hate\":{\"filtered\":false,\"severity\":\"safe\"}},\"content_filter_offsets\":{\"check_offset\":8,\"start_offset\":0,\"end_offset\":8}}],\"usage\":null}\n\n",
+    "data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":null}\n\n",
+    "data: [DONE]\n\n"
+  ],
+  "strides": [1, 3, 8192],
+  "expect": {"strict": {"error": "unsupported", "partial": {"text": "Color is"}}, "lenient": "same"}
+}

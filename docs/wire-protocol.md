@@ -1,7 +1,7 @@
 # Wire protocol: OpenAI-compatible Chat Completions
 
 What svir needs to know about `POST /v1/chat/completions` with `stream: true`, as observed across
-LM Studio, mlx-lm, llama.cpp, vLLM, and the OpenAI streaming schema. This is a reference of facts
+LM Studio, mlx-lm, llama.cpp, vLLM, Azure OpenAI, and the OpenAI streaming schema. This is a reference of facts
 and observed server behavior. How svir handles each fact is in [architecture.md](architecture.md).
 
 ## 1. Endpoints and base URL
@@ -99,8 +99,9 @@ was generated in that case, so retrying without them is safe.
 - Delta keys: `role` (`"assistant"`, first chunk), `content`, `reasoning_content`, `reasoning`,
   `tool_calls`. Keys can be present with `null`. Other keys (`audio`, `refusal`, deprecated
   `function_call`) are features outside this protocol subset.
-- `finish_reason` appears once, on the last choice chunk: `stop`, `tool_calls`, or `length`.
-  `content_filter` and others exist in the wider schema.
+- `finish_reason` appears once, on the last choice chunk: `stop`, `tool_calls`, `length`, or
+  `content_filter`, when a content filter stopped the answer (3.7). Others exist in the wider
+  schema, such as the deprecated `function_call`.
 - A server that separates reasoning itself leaves what followed it in the answer: LM Studio's
   first `content` delta after reasoning is `"\n\n"`, also ahead of tool calls. It is part of the
   text the server sent.
@@ -177,6 +178,32 @@ the first token does not drag it down. A chunk that was only a `<think>` marker,
 produced nothing visible and does not count as a token. With one token, or a window shorter than
 about 50 ms, there is no honest rate.
 
+### 3.7 Content filtering
+
+Azure OpenAI runs a content filter over the prompt and the answer, and reports on both in the
+stream. Recorded from an Azure AI Foundry deployment in its default streaming mode
+(`tests/conformance/decoder/azure.sse`):
+
+- The first chunk reports on the prompt: `choices` is empty, `id` and `model` are empty strings,
+  `created` is `0`, and `prompt_filter_results` holds the verdict per category. It carries
+  nothing of the answer. Earlier API versions name the field `prompt_annotations`.
+- Every choice carries `content_filter_results`, sometimes `{}`. The first delta carries
+  `"refusal": null` next to `role` and an empty `content`.
+- Chunks carry `obfuscation` (random padding), `service_tier`, `system_fingerprint: null`, and
+  `usage: null` until the usage chunk, which adds `latency_checkpoint` and `routing`.
+- `model` in the chunks is the model version (`gpt-6-luna-2026-09-22`), not the deployment name
+  the request named.
+
+From Azure's documentation, not recorded yet:
+
+- When the filter stops the answer, the last choice chunk has `finish_reason: "content_filter"`.
+  In the default mode, what came before it passed the filter and was sent.
+- A deployment can opt into an asynchronous filter: the answer streams unfiltered, and annotation
+  chunks follow it. An annotation is a choice with `content_filter_results` and
+  `content_filter_offsets` and no `delta`, in a chunk whose `id` and `model` are empty. Annotations
+  interleave with the answer and can come after the chunk with the finish reason; a
+  `content_filter` finish arrives in one.
+
 ## 4. Reasoning
 
 Three carriers exist:
@@ -211,6 +238,9 @@ Servers agree on no single sign of a context overflow:
 | llama.cpp | 400 with a numeric `error.code`, `error.type` of `exceed_context_size_error`, and "the request exceeds the available context size" |
 | LM Studio | Status 200 and an `event: error` inside the stream (3.5), with only a message: "...greater than the context length..." |
 
+Azure OpenAI rejects a prompt its content filter blocks with 400 and `error.code` of
+`content_filter` (documented, not recorded yet). Nothing was generated, but the prompt is billed.
+
 An upstream `401` in a proxy is ambiguous: it can mean the proxy's own session or the model
 server's key. A proxy has to keep the two apart.
 
@@ -227,4 +257,6 @@ telling them apart; the practical filter is a name heuristic (`embed`, `rerank`,
 Sources: [LM Studio Chat Completions](https://lmstudio.ai/docs/developer/openai-compat/chat-completions),
 [LM Studio tool use](https://lmstudio.ai/docs/developer/openai-compat/tools),
 [LM Studio authentication](https://lmstudio.ai/docs/developer/core/authentication),
-[Chat Completions streaming events](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events).
+[Chat Completions streaming events](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events),
+[Azure OpenAI content streaming](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/content-streaming),
+[Azure content filtering](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/concepts/content-filter).

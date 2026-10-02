@@ -9,7 +9,7 @@ on an open decision lists it in `open`.
 
 | Directory | Covers | Status |
 | --- | --- | --- |
-| `decoder/` | SSE framing, deltas, reasoning, tool calls, usage, limits, errors inside the stream, strict and lenient | 53 cases, run by `tests/conformance_decoder.rs` |
+| `decoder/` | SSE framing, deltas, reasoning, tool calls, usage, limits, errors inside the stream, strict and lenient | 59 cases, run by `tests/conformance_decoder.rs` |
 | `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, admission | 22 cases, run by `tests/conformance_encoder.rs` |
 | `transport/` | Authentication, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 47 cases, run by `tests/conformance_transport.rs` |
 
@@ -62,7 +62,7 @@ A completion:
 
 | Field | Meaning |
 | --- | --- |
-| `finish` | `stop`, `tool_calls`, or `length`. Required. |
+| `finish` | `stop`, `tool_calls`, `length`, or `content_filter`. Required. |
 | `text` | The answer. Default `""`. |
 | `reasoning` | `[{"source": ..., "text": ...}]`, one entry per carrier in order of first appearance, text concatenated. `source` is `reasoning_content`, `reasoning`, or `think`. Default `[]`. |
 | `calls` | `[{"id": ..., "name": ..., "arguments": ...}]` in index order; `arguments` is the raw string. Default `[]`. |
@@ -87,7 +87,7 @@ An error:
 Either outcome may add `visible_by_chunk`: one boolean per pushed chunk, true when that push
 delivered at least one non-empty text or reasoning delta. Valid only for `chunks` pushed as given.
 
-`{"open": "O12"}` in place of an outcome means there is no expectation yet for that mode; the
+`{"open": "O7"}` in place of an outcome means there is no expectation yet for that mode; the
 runner skips it.
 
 ### Fixtures
@@ -97,6 +97,7 @@ runner skips it.
 | `tools.sse` | Reasoning, then two tool calls whose names and arguments are split and whose pieces interleave out of index order; `tool_calls` finish; trailing usage chunk. |
 | `final.sse` | A short text answer, `stop` finish, trailing usage chunk. |
 | `final-no-usage.sse` | `final.sse` without the usage chunk. |
+| `azure.sse` | Recorded from Azure OpenAI: a prompt report with no choices and an empty `id` and `model`, content-filter results on every choice, `stop` finish, usage chunk with reasoning tokens. |
 
 ## Requests
 

@@ -88,7 +88,8 @@ builder methods, with public fields for reading.
   them. svir reports only what the server said; estimates are the caller's.
 - **Timing** is when the first and last visible tokens arrived, from the start of the response;
   `Completion::tokens_per_second` applies the rule of P7.
-- **Finish reason** is `stop`, `tool_calls`, or `length`. Anything else is an error in strict mode.
+- **Finish reason** is `stop`, `tool_calls`, `length`, or `content_filter` (D35). Anything else
+  is an error in both modes.
 - **Reasoning** carries its source (`reasoning_content`, `reasoning`, or `think`), which is all
   Chat Completions needs to send it back. Opaque continuation data, such as signed thinking
   blocks, arrives with the first wire API that needs it (O6).
@@ -200,13 +201,11 @@ or a tool call wrong (P8).
 | `data` that is not valid JSON | `Protocol` | Ignored |
 | Invalid UTF-8 in an event | `Protocol` | Replaced lossily |
 | Unknown key in a delta (for example `audio`, `refusal`) | `Unsupported` | Ignored |
-| A chunk with an empty `choices` array before the finish reason | `Protocol` | Ignored |
+| A chunk with an empty `choices` array before the finish reason, other than a prompt report | `Protocol` | Ignored |
 | More than one choice, or a choice index other than 0 | `Unsupported` | First choice read |
 | `id` or `model` changes mid-stream | `Protocol` | Ignored |
 | Usage reported twice | `Protocol` | The last one kept |
 | Usage without `prompt_tokens` or `completion_tokens` | `Protocol` | Usage ignored |
-| Unknown finish reason (for example `content_filter`) | `Unsupported` | Open (O12); `Unsupported` until decided |
-| Content after the finish reason | `Unsupported` | Open (O12); `Unsupported` until decided |
 | Error object inside an open stream, or an `event: error` event | `Server`, or `ContextOverflow` when it says so, with the server's message (D29, D30) | The same |
 
 Enforced the same way in both modes (P8):
@@ -216,10 +215,17 @@ Enforced the same way in both modes (P8):
 | Wire bytes, event bytes, or tool calls over limit | `ResponseLimit` |
 | End of stream, or `[DONE]`, before a finish reason; end of stream before `[DONE]` | `TruncatedStream` |
 | Tool calls with duplicate or changing IDs, missing IDs or names, or non-contiguous indices | `Protocol` |
-| `tool_calls` finish without calls, or calls with a `stop` finish | `Protocol` |
+| `tool_calls` finish without calls, or calls with a `stop` or `content_filter` finish | `Protocol` |
+| A finish reason other than `stop`, `tool_calls`, `length`, and `content_filter` (D35) | `Unsupported` |
+| Content after the finish reason (D35) | `Unsupported` |
+| An annotation from an asynchronous content filter: a choice with `content_filter_offsets` (D35) | `Unsupported` |
 
 Two SSE details are framing, not leniency, and hold in both modes: several `data` lines in one
-event join with a newline, and both `reasoning_content` and `reasoning` are reasoning. A call ID
+event join with a newline, and both `reasoning_content` and `reasoning` are reasoning.
+
+A prompt report, a chunk with an empty `choices` array and `prompt_filter_results` (or the older
+`prompt_annotations`), is known input: it carries nothing of the answer and is skipped whole in
+both modes, its empty `id` and `model` included. A call ID
 repeated on later pieces of the same call is consistent; one that changes is not (P10).
 
 Limits and their current defaults: 64 MiB of wire bytes per attempt (D32), 256 KiB per SSE
