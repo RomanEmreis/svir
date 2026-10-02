@@ -194,15 +194,45 @@ stream. Recorded from an Azure AI Foundry deployment in its default streaming mo
 - `model` in the chunks is the model version (`gpt-6-luna-2026-09-22`), not the deployment name
   the request named.
 
-From Azure's documentation, not recorded yet:
+A block in this mode, recorded with a blocklist the filter applied per request (the
+`x-policy-id` header names a content filter for one request; it applies the filter's lists but
+not its streaming mode):
 
-- When the filter stops the answer, the last choice chunk has `finish_reason: "content_filter"`.
-  In the default mode, what came before it passed the filter and was sent.
-- A deployment can opt into an asynchronous filter: the answer streams unfiltered, and annotation
-  chunks follow it. An annotation is a choice with `content_filter_results` and
-  `content_filter_offsets` and no `delta`, in a chunk whose `id` and `model` are empty. Annotations
-  interleave with the answer and can come after the chunk with the finish reason; a
-  `content_filter` finish arrives in one.
+- The answer streamed with the blocklisted word in it, three times, before the block. Azure's
+  documentation says that in the default mode what came before a block passed the filter; the
+  recording does not bear that out.
+- The block is an ordinary chunk of the stream, with its `id` and `model`, an empty delta,
+  `finish_reason: "content_filter"`, and the verdict in `content_filter_results`
+  (`"custom_blocklists":[{"filtered":true,"id":"svir"}]`). `[DONE]` follows at once: no usage
+  chunk, although the request asked for usage.
+
+A deployment can opt into an asynchronous filter, set on the content filter assigned to it: the
+answer streams unvetted, and annotation chunks report on it. Recorded from the same deployment
+with such a filter (`azure-async.sse`, `azure-async-flagged.sse`):
+
+- An annotation is a choice with `content_filter_offsets` and `content_filter_results` and no
+  `delta`, in a chunk whose `id`, `model`, and `object` are empty and whose `created` is `0`. It
+  has no `usage` key. Each carries the results of one filter:
+
+  ```text
+  data: {"choices":[{"content_filter_offsets":{"check_offset":140,"start_offset":140,"end_offset":259},"content_filter_results":{"custom_blocklists":[{"filtered":true,"id":"svir"}]},"finish_reason":null,"index":0}],"created":0,"id":"","model":"","object":""}
+  ```
+
+- Annotations interleave with the answer, repeat, and follow the model's finish: after `stop`
+  come the last annotations, then the usage chunk, then `[DONE]`.
+- A block caught while the answer streams is an annotation with
+  `finish_reason: "content_filter"`, and `[DONE]` follows at once, with no usage chunk. The
+  blocked word had streamed four times before it.
+- A block caught after the model's `stop` comes with no finish reason: an annotation whose
+  verdict is `filtered: true`, then the usage chunk and `[DONE]`. Only the verdict says that the
+  answer, which held the blocked word ten times, was blocked. Azure's documentation shows a
+  `content_filter` finish in an annotation after the model's finish instead; that was not seen.
+- A filter set to annotate only reports `detected: true` with `filtered: false`.
+- The offsets do not behave as documented. `check_offset` is documented as how much text is
+  fully moderated, never decreasing; recorded, it stayed at one value for the whole answer,
+  about the length of the prompt as the server rendered it. `start_offset` and `end_offset` mark
+  the text an annotation applies to, counted from the same start, and go back and forth from one
+  annotation to the next.
 
 ## 4. Reasoning
 
@@ -239,7 +269,14 @@ Servers agree on no single sign of a context overflow:
 | LM Studio | Status 200 and an `event: error` inside the stream (3.5), with only a message: "...greater than the context length..." |
 
 Azure OpenAI rejects a prompt its content filter blocks with 400 and `error.code` of
-`content_filter` (documented, not recorded yet). Nothing was generated, but the prompt is billed.
+`content_filter`, as `application/json`, also for a streamed request. `innererror` holds the
+verdict per category. Nothing was generated, but the prompt's evaluation is billed, so sending it
+again costs again. Recorded from an Azure AI Foundry deployment, a prompt its jailbreak shield
+blocked (the message shortened here):
+
+```json
+{"error":{"message":"The response was filtered due to the prompt triggering Azure OpenAI's content management policy. ...","type":null,"param":"prompt","code":"content_filter","status":400,"innererror":{"code":"ResponsibleAIPolicyViolation","content_filter_result":{"hate":{"filtered":false,"severity":"safe"},"jailbreak":{"detected":true,"filtered":true},...}}}}
+```
 
 An upstream `401` in a proxy is ambiguous: it can mean the proxy's own session or the model
 server's key. A proxy has to keep the two apart.

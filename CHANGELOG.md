@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.1.3
+
+### Added
+
+* **`ErrorKind::ContentFilter`**: the server's content filter blocked the
+  prompt, as Azure OpenAI reports with a 400 whose `error.code` is
+  `content_filter`. It is not retryable: the prompt has to change. It was
+  `Unsupported` before, and only `server_message()` said what happened.
+* **Azure's asynchronous content filter is read.** It streams the answer
+  unvetted and reports on it in annotations. An annotation that blocks
+  nothing is skipped, before the finish reason or after it. One that blocks,
+  by a `content_filter` finish or by a verdict marked `filtered: true`, makes
+  the answer's finish `FinishReason::ContentFilter`, even after the model's
+  own `stop`: Azure reports a word it caught only after the model finished
+  that way, with no finish reason. The completion keeps the text as it was
+  streamed, and a caller that shows it withdraws it. Annotations were
+  `Unsupported` in both modes before.
+
+### Fixed
+
+* **A prompt the content filter blocked is no longer sent twice.** A 400 to
+  a request with `reasoning_effort` or `stream_options`, which is nearly every
+  request since usage is asked for by default, was retried without them, as a
+  server that does not know them would need. The filter blocked the second
+  attempt too, and its evaluation was billed again. The retry now follows only
+  a rejection whose body explains nothing.
+
 ## 0.1.2
 
 ### Added

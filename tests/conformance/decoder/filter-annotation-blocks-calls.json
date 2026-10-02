@@ -1,0 +1,11 @@
+{
+  "description": "The asynchronous filter blocks an answer that finished with tool calls. The finish becomes content_filter, and a flagged call is not released: tool calls with a content_filter finish are a protocol error, as with stop.",
+  "file": "tools.sse",
+  "replace": [
+    [
+      "data: [DONE]",
+      "data: {\"choices\":[{\"content_filter_offsets\":{\"check_offset\":0,\"start_offset\":0,\"end_offset\":40},\"content_filter_results\":{\"violence\":{\"filtered\":true,\"severity\":\"high\"}},\"finish_reason\":\"content_filter\",\"index\":0}],\"created\":0,\"id\":\"\",\"model\":\"\",\"object\":\"\"}\n\ndata: [DONE]"
+    ]
+  ],
+  "expect": {"strict": {"error": "protocol"}, "lenient": "same"}
+}

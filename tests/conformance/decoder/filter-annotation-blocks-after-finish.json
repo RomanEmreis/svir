@@ -1,0 +1,16 @@
+{
+  "description": "The asynchronous filter blocks the end of the answer after the model finished with stop, in the form Azure's documentation gives: an annotation with a content_filter finish. (Recorded, the same block came as a filtered verdict with no finish: filter-annotation-flagged-after-finish.) The filter's verdict on text already sent is the answer's finish: the completion is content_filter, so flagged text is not kept as a clean answer.",
+  "file": "final.sse",
+  "replace": [
+    [
+      "data: [DONE]",
+      "data: {\"choices\":[{\"content_filter_offsets\":{\"check_offset\":0,\"start_offset\":0,\"end_offset\":2},\"content_filter_results\":{\"protected_material_text\":{\"detected\":true,\"filtered\":true}},\"finish_reason\":\"content_filter\",\"index\":0}],\"created\":0,\"id\":\"\",\"model\":\"\",\"object\":\"\"}\n\ndata: [DONE]"
+    ]
+  ],
+  "expect": {
+    "strict": {
+      "completion": {"finish": "content_filter", "text": "42", "usage": {"input": 24, "output": 3, "total": 27}}
+    },
+    "lenient": "same"
+  }
+}

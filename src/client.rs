@@ -195,13 +195,14 @@ impl<B: Backend> Client<B> {
         };
 
         // A 400 or 422 to a request with optional fields may be about those fields. Nothing was
-        // generated, so one attempt without them is safe. A context overflow is not about them.
+        // generated, so one attempt without them is safe. A rejection the body explains, a context
+        // overflow or a blocked prompt, is not about them (D26, D36).
         let optional = request.reasoning.is_some()
             || request.include_usage.unwrap_or(self.inner.include_usage);
         if !lean
             && optional
             && matches!(status, 400 | 422)
-            && error.kind() != ErrorKind::ContextOverflow
+            && error.kind() == ErrorKind::Unsupported
         {
             if let Ok(Ok(bytes)) = self.attempt(request, true).await {
                 self.inner.lean.store(true, Ordering::Relaxed);

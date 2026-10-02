@@ -1,0 +1,10 @@
+{
+  "description": "An annotation with a finish reason other than content_filter. A filter's verdict that is not a block may mean the answer is not what it looks like, so it fails in both modes, as an unknown finish reason does.",
+  "chunks": [
+    "data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\",\"content\":\"Some text\"}}],\"usage\":null}\n\n",
+    "data: {\"choices\":[{\"content_filter_offsets\":{\"check_offset\":9,\"start_offset\":0,\"end_offset\":9},\"content_filter_results\":{\"hate\":{\"filtered\":false,\"severity\":\"safe\"}},\"finish_reason\":\"stop\",\"index\":0}],\"created\":0,\"id\":\"\",\"model\":\"\",\"object\":\"\"}\n\n",
+    "data: [DONE]\n\n"
+  ],
+  "strides": [1, 3, 8192],
+  "expect": {"strict": {"error": "unsupported", "partial": {"text": "Some text"}}, "lenient": "same"}
+}

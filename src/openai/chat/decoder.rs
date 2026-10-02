@@ -57,6 +57,9 @@ pub struct Decoder {
     reasoning: Vec<Reasoning>,
     calls: BTreeMap<u64, PartialCall>,
     finish: Option<FinishReason>,
+    /// An asynchronous content filter blocked something it had let through: the answer's finish
+    /// is `ContentFilter`, whatever the model's own.
+    filtered: bool,
     usage: Option<Usage>,
 }
 
@@ -93,6 +96,7 @@ impl Decoder {
             reasoning: Vec::new(),
             calls: BTreeMap::new(),
             finish: None,
+            filtered: false,
             usage: None,
         }
     }
@@ -199,14 +203,12 @@ impl Decoder {
             return Ok(());
         }
 
-        // Azure's asynchronous filter vets text it already streamed; svir does not read it yet.
-        if is_annotation(chunk) {
-            return Err(unsupported(
-                "an annotation from an asynchronous content filter",
-            ));
+        // Azure's asynchronous filter vets text it already streamed, in annotations. One carries
+        // nothing of the answer, and its empty id and model are not the stream's.
+        let annotation = annotation(chunk);
+        if annotation.is_none() {
+            self.metadata(chunk)?;
         }
-
-        self.metadata(chunk)?;
 
         if let Some(usage) = present(chunk, "usage") {
             self.usage(usage)?;
@@ -231,6 +233,10 @@ impl Decoder {
             return Err(unsupported(
                 "more than one choice, or a choice other than 0",
             ));
+        }
+
+        if let Some(annotation) = annotation {
+            return self.annotation(annotation);
         }
 
         if self.finish.is_some() {
@@ -309,6 +315,30 @@ impl Decoder {
             });
         }
         Ok(())
+    }
+
+    /// An annotation from an asynchronous content filter: its verdict on text already streamed.
+    /// A block, by its finish reason or by a verdict marked filtered, is the answer's finish, even
+    /// after the model's own (D35); anything else it says is not read.
+    fn annotation(&mut self, choice: &Map<String, Value>) -> Result<(), Error> {
+        if choice.get("content_filter_results").is_some_and(blocks) {
+            self.filtered = true;
+        }
+
+        let Some(reason) = present(choice, "finish_reason") else {
+            return Ok(());
+        };
+
+        match reason.as_str() {
+            Some("content_filter") => {
+                self.finish = Some(FinishReason::ContentFilter);
+                Ok(())
+            }
+            Some(_) => Err(unsupported(
+                "an annotation with a finish reason other than content_filter",
+            )),
+            None => Err(protocol("a finish reason is not a string")),
+        }
     }
 
     fn delta(&mut self, delta: &Map<String, Value>, events: &mut Vec<Event>) -> Result<(), Error> {
@@ -486,6 +516,11 @@ impl Decoder {
         let finish = self.finish.ok_or_else(|| {
             Error::new(ErrorKind::TruncatedStream).with_detail("[DONE] before a finish reason")
         })?;
+        let finish = if self.filtered {
+            FinishReason::ContentFilter
+        } else {
+            finish
+        };
 
         let mut ids = HashSet::new();
         let mut calls = Vec::with_capacity(self.calls.len());
@@ -546,10 +581,37 @@ fn is_prompt_report(chunk: &Map<String, Value>) -> bool {
         && matches!(chunk.get("choices"), Some(Value::Array(choices)) if choices.is_empty())
 }
 
-/// Whether a chunk annotates text already sent: a choice with the offsets of what it vetted.
-fn is_annotation(chunk: &Map<String, Value>) -> bool {
-    matches!(chunk.get("choices"), Some(Value::Array(choices))
-        if choices.iter().any(|choice| choice.get("content_filter_offsets").is_some()))
+/// The choice of a chunk that annotates text already sent: one with the offsets of what it
+/// vetted, and no delta.
+fn annotation(chunk: &Map<String, Value>) -> Option<&Map<String, Value>> {
+    let Some(Value::Array(choices)) = chunk.get("choices") else {
+        return None;
+    };
+
+    match choices.first() {
+        Some(Value::Object(choice))
+            if choice.contains_key("content_filter_offsets")
+                && present(choice, "delta").is_none() =>
+        {
+            Some(choice)
+        }
+        _ => None,
+    }
+}
+
+/// Whether a content filter's results block anything: a category, or a blocklist, marked
+/// filtered. Detected and not filtered is what a filter set to annotate only reports.
+fn blocks(results: &Value) -> bool {
+    let filtered = |verdict: &Value| verdict.get("filtered").and_then(Value::as_bool) == Some(true);
+
+    let Value::Object(results) = results else {
+        return false;
+    };
+
+    results.values().any(|verdict| match verdict {
+        Value::Array(verdicts) => verdicts.iter().any(filtered),
+        verdict => filtered(verdict),
+    })
 }
 
 fn protocol(detail: &'static str) -> Error {

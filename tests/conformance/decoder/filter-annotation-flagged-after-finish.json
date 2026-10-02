@@ -1,0 +1,14 @@
+{
+  "description": "Recorded from Azure OpenAI with the asynchronous content filter: the model finished with stop before the filter caught a blocklisted word, and the filter says so after the stop in an annotation marked filtered, with no finish reason. The answer holds the word ten times, so it is not a clean answer: the finish is content_filter, and the text is kept as streamed.",
+  "file": "azure-async-flagged.sse",
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "content_filter",
+        "text": "svirblocked svirblocked svirblocked svirblocked svirblocked svirblocked svirblocked svirblocked svirblocked svirblocked",
+        "usage": {"input": 30, "output": 101, "total": 131, "reasoning": 62}
+      }
+    },
+    "lenient": "same"
+  }
+}

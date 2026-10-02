@@ -1,0 +1,34 @@
+{
+  "description": "A prompt the content filter blocked is not about the optional fields: no retry without them, which would send the blocked prompt, and bill its evaluation, twice. The body is recorded from Azure OpenAI, for a request with stream_options.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 400,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"error\":{\"message\":\"The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry. To learn more about our content filtering policies please read our documentation: https://go.microsoft.com/fwlink/?linkid=2198766\",\"type\":null,\"param\":\"prompt\",\"code\":\"content_filter\",\"status\":400,\"innererror\":{\"code\":\"ResponsibleAIPolicyViolation\",\"content_filter_result\":{\"hate\":{\"filtered\":false,\"severity\":\"safe\"},\"jailbreak\":{\"detected\":true,\"filtered\":true},\"self_harm\":{\"filtered\":false,\"severity\":\"safe\"},\"sexual\":{\"filtered\":false,\"severity\":\"safe\"},\"violence\":{\"filtered\":false,\"severity\":\"safe\"}}}}}"
+    },
+    {
+      "status": 400,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"error\":{\"message\":\"The response was filtered due to the prompt triggering Azure OpenAI's content management policy. Please modify your prompt and retry. To learn more about our content filtering policies please read our documentation: https://go.microsoft.com/fwlink/?linkid=2198766\",\"type\":null,\"param\":\"prompt\",\"code\":\"content_filter\",\"status\":400,\"innererror\":{\"code\":\"ResponsibleAIPolicyViolation\",\"content_filter_result\":{\"hate\":{\"filtered\":false,\"severity\":\"safe\"},\"jailbreak\":{\"detected\":true,\"filtered\":true},\"self_harm\":{\"filtered\":false,\"severity\":\"safe\"},\"sexual\":{\"filtered\":false,\"severity\":\"safe\"},\"violence\":{\"filtered\":false,\"severity\":\"safe\"}}}}}"
+    }
+  ],
+  "calls": [
+    {
+      "request": {
+        "model": "m",
+        "reasoning_effort": "low",
+        "include_usage": true,
+        "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+      },
+      "expect": {"error": "content_filter", "retryable": false, "status": 400}
+    }
+  ],
+  "expect_requests": [
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "body_includes": {"reasoning_effort": "low", "stream_options": {"include_usage": true}}
+    }
+  ]
+}
