@@ -16,7 +16,7 @@ use std::{
 
 use ::hyper::header::{
     ACCEPT, AUTHORIZATION, CONNECTION, CONTENT_LENGTH, CONTENT_TYPE, HOST, HeaderMap, HeaderName,
-    HeaderValue, TRANSFER_ENCODING,
+    HeaderValue, RETRY_AFTER, TRANSFER_ENCODING,
 };
 use bytes::Bytes;
 use futures_core::Stream;
@@ -254,7 +254,7 @@ impl<B: Backend> Client<B> {
             let status = response.status;
             return Ok(Err((status, self.rejected(&mut response).await)));
         }
-        if !status::is_event_stream(response.header("content-type")) {
+        if !status::is_event_stream(response.header(CONTENT_TYPE.as_str())) {
             return Err(Error::new(ErrorKind::Unsupported)
                 .with_detail("the response is not an event stream"));
         }
@@ -264,11 +264,17 @@ impl<B: Backend> Client<B> {
     fn request(&self, method: Method, url: String, body: Option<HttpBody>) -> HttpRequest {
         let mut headers = Vec::new();
         if body.is_some() {
-            headers.push(("content-type".to_owned(), "application/json".to_owned()));
-            headers.push(("accept".to_owned(), "text/event-stream".to_owned()));
+            headers.push((
+                CONTENT_TYPE.as_str().to_owned(),
+                "application/json".to_owned(),
+            ));
+            headers.push((ACCEPT.as_str().to_owned(), status::EVENT_STREAM.to_owned()));
         }
         if let Some(key) = &self.inner.authorization {
-            headers.push(("authorization".to_owned(), format!("Bearer {}", key.0)));
+            headers.push((
+                AUTHORIZATION.as_str().to_owned(),
+                format!("Bearer {}", key.0),
+            ));
         }
         // Validated as ASCII when the client was built, so nothing is lost on the way to text.
         headers.extend(self.inner.headers.iter().map(|(name, value)| {
@@ -304,7 +310,11 @@ impl<B: Backend> Client<B> {
             MESSAGE_WAIT
         };
         let body = read_some(&mut response.body, ERROR_BODY_LIMIT, wait).await;
-        status::classify(response.status, response.header("retry-after"), &body)
+        status::classify(
+            response.status,
+            response.header(RETRY_AFTER.as_str()),
+            &body,
+        )
     }
 }
 
@@ -636,7 +646,7 @@ struct Secret(Box<str>);
 
 impl fmt::Debug for Secret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("<withheld>")
+        f.write_str(crate::http::WITHHELD)
     }
 }
 
@@ -692,21 +702,22 @@ fn base_url(url: &str, allow_http: bool) -> Result<String, Error> {
     if uri.query().is_some() {
         return Err(config("the base URL has a query"));
     }
-    match scheme {
-        "https" if cfg!(any(feature = "tls", feature = "tls-aws-lc")) => {}
-        "https" => {
-            return Err(config(
-                "an https URL needs the `tls` or the `tls-aws-lc` feature",
-            ));
-        }
-        "http" if allow_http || is_loopback(authority.host()) => {}
-        "http" => {
-            return Err(config(
-                "plain HTTP to a host that is not loopback; use https, or allow_http()",
-            ));
-        }
+    let secure = match scheme {
+        "https" => true,
+        "http" => false,
         _ => return Err(config("the base URL is not http or https")),
+    };
+    if secure && !cfg!(any(feature = "tls", feature = "tls-aws-lc")) {
+        return Err(config(
+            "an https URL needs the `tls` or the `tls-aws-lc` feature",
+        ));
     }
+    if !secure && !allow_http && !is_loopback(authority.host()) {
+        return Err(config(
+            "plain HTTP to a host that is not loopback; use https, or allow_http()",
+        ));
+    }
+
     let path = uri.path().trim_end_matches('/');
     let path = path.strip_suffix("/v1").unwrap_or(path);
     Ok(format!("{scheme}://{authority}{path}"))

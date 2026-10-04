@@ -4,7 +4,10 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use super::overflow;
+use super::{
+    overflow,
+    wire::{CODE, ERROR, MESSAGE},
+};
 use crate::{Error, ErrorKind};
 
 /// A retry delay the server asks for is honored up to this.
@@ -12,6 +15,9 @@ const RETRY_AFTER_LIMIT: Duration = Duration::from_secs(30);
 
 /// The `error.code` of a prompt the server's content filter blocked.
 const FILTERED: &str = "content_filter";
+
+/// The media type of an answer stream.
+pub(crate) const EVENT_STREAM: &str = "text/event-stream";
 
 /// Whether the kind of this status depends on the response body: a rejected request may be a
 /// context overflow or a blocked prompt, which only the body tells.
@@ -22,12 +28,12 @@ pub(crate) fn kind_is_in_body(status: u16) -> bool {
 /// The error for a response that is not a success.
 pub(crate) fn classify(status: u16, retry_after: Option<&str>, body: &[u8]) -> Error {
     let parsed = serde_json::from_slice::<Value>(body).ok();
-    let reported = parsed.as_ref().and_then(|body| body.get("error"));
+    let reported = parsed.as_ref().and_then(|body| body.get(ERROR));
 
     // The server's own words: the message of a JSON error, or a plain-text body as it is.
     let message = match &parsed {
         Some(_) => reported
-            .and_then(|error| error.get("message").or(Some(error)))
+            .and_then(|error| error.get(MESSAGE).or(Some(error)))
             .and_then(Value::as_str)
             .map(str::to_owned),
         None => std::str::from_utf8(body)
@@ -39,7 +45,7 @@ pub(crate) fn classify(status: u16, retry_after: Option<&str>, body: &[u8]) -> E
     // when its error names one, or its message says so (D30).
     let filtered = || {
         reported
-            .and_then(|error| error.get("code"))
+            .and_then(|error| error.get(CODE))
             .and_then(Value::as_str)
             == Some(FILTERED)
     };
@@ -80,7 +86,7 @@ pub(crate) fn classify(status: u16, retry_after: Option<&str>, body: &[u8]) -> E
 pub(crate) fn is_event_stream(content_type: Option<&str>) -> bool {
     content_type
         .and_then(|value| value.split(';').next())
-        .is_some_and(|media| media.trim().eq_ignore_ascii_case("text/event-stream"))
+        .is_some_and(|media| media.trim().eq_ignore_ascii_case(EVENT_STREAM))
 }
 
 #[cfg(test)]

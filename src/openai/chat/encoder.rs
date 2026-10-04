@@ -4,9 +4,11 @@ use bytes::Bytes;
 use serde::Serialize;
 use serde_json::Value;
 
+use super::wire::FUNCTION_TYPE;
 use crate::body::{
     Body, Encoding, Segment, attachment,
     escape::{escape_into, escaped_len},
+    not_utf8,
 };
 use crate::{
     Effort, Error, ErrorKind, Image, Message, Part, ReasoningSource, Request, Role, Source,
@@ -143,7 +145,7 @@ impl Encoder {
                 .tools
                 .iter()
                 .map(|tool| WireTool {
-                    kind: "function",
+                    kind: FUNCTION_TYPE,
                     function: WireFunction {
                         name: &tool.name,
                         description: &tool.description,
@@ -234,7 +236,7 @@ fn measure_bytes(
         Encoding::Base64 => base64_len(size),
         Encoding::JsonString => {
             if std::str::from_utf8(data).is_err() {
-                return Err(attachment("a text file is not UTF-8"));
+                return Err(not_utf8());
             }
             escaped_len(data)
         }
@@ -558,7 +560,7 @@ impl<'a> From<&'a ToolCall> for WireCall<'a> {
     fn from(call: &'a ToolCall) -> Self {
         Self {
             id: &call.id,
-            kind: "function",
+            kind: FUNCTION_TYPE,
             function: WireCallFunction {
                 name: &call.name,
                 arguments: &call.arguments,
@@ -573,10 +575,13 @@ mod files {
 
     use tokio::{fs::File, io::AsyncReadExt};
 
-    use super::{Encoding, Measured, attachment, base64_len, not_declared};
+    use super::{Encoding, Measured, base64_len, not_declared};
     use crate::{
-        Error, ErrorKind,
-        body::escape::{Utf8Check, escaped_len},
+        Error,
+        body::{
+            escape::{Utf8Check, escaped_len},
+            not_utf8, unreadable,
+        },
     };
 
     /// Measures a file: an image by its size, a text file by reading it once, or by its size when
@@ -614,13 +619,13 @@ mod files {
                         break;
                     }
                     if !check.push(&buffer[..read]) {
-                        return Err(attachment("a text file is not UTF-8"));
+                        return Err(not_utf8());
                     }
                     size += read as u64;
                     encoded += escaped_len(&buffer[..read]);
                 }
                 if !check.finish() {
-                    return Err(attachment("a text file is not UTF-8"));
+                    return Err(not_utf8());
                 }
                 Ok(Measured { size, encoded })
             }
@@ -629,12 +634,6 @@ mod files {
 
     async fn size_of(path: &Path) -> Result<u64, Error> {
         Ok(tokio::fs::metadata(path).await.map_err(unreadable)?.len())
-    }
-
-    fn unreadable(source: std::io::Error) -> Error {
-        Error::new(ErrorKind::Attachment)
-            .with_detail("an attachment could not be read")
-            .with_source(source)
     }
 }
 

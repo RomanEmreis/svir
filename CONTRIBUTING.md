@@ -90,6 +90,10 @@ SVIR_MODEL=<model> cargo test --test live -- --ignored --test-threads=1
   serializable.
 - No `unsafe`, and no `unwrap()` outside tests.
 - Inside a function, a blank line separates logical steps.
+- A literal that means the same thing in two places or more is one named constant (a
+  header name, a wire key, an error detail); an error built twice is one function. Header
+  names come from the `http` crate, Chat Completions names from `openai/chat/wire.rs`.
+  Attribute arguments, JSON written as data, `Debug` labels, and tests keep their literals.
 - Nothing on the request path is boxed or dispatched dynamically; a stream is a named
   type with a hand-written `poll_next`.
 - The dependency tree is small on purpose. Please discuss a new dependency before

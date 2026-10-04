@@ -18,8 +18,8 @@ use tokio::{
     task::JoinHandle,
 };
 
-use super::{Encoding, Segment, attachment, encode, escape::Utf8Check};
-use crate::{Error, ErrorKind, Source};
+use super::{Encoding, Segment, attachment, encode, escape::Utf8Check, not_utf8, unreadable};
+use crate::{Error, Source};
 
 /// A [`Body`](super::Body) being read: its blocks, in order.
 ///
@@ -208,7 +208,7 @@ impl Stream for BodyStream {
                     if reading.encoding == Encoding::JsonString
                         && (!reading.utf8.push(block) || (left == 0 && !reading.utf8.finish()))
                     {
-                        return fail(attachment("a text file is not UTF-8"));
+                        return fail(not_utf8());
                     }
 
                     let mut out = Vec::new();
@@ -271,12 +271,6 @@ impl fmt::Debug for BodyStream {
             .field("segments_left", &self.segments.len())
             .finish_non_exhaustive()
     }
-}
-
-fn unreadable(source: io::Error) -> Error {
-    Error::new(ErrorKind::Attachment)
-        .with_detail("an attachment could not be read")
-        .with_source(source)
 }
 
 fn changed() -> Error {
