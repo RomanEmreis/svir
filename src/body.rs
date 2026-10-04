@@ -10,6 +10,7 @@ pub(crate) mod escape;
 #[cfg(feature = "client")]
 mod stream;
 
+pub use escape::escaped_len;
 #[cfg(feature = "client")]
 pub use stream::BodyStream;
 
@@ -112,4 +113,13 @@ fn encode(block: &[u8], encoding: Encoding, out: &mut Vec<u8>) {
 
 pub(crate) fn attachment(detail: &'static str) -> Error {
     Error::new(ErrorKind::Attachment).with_detail(detail)
+}
+
+pub(crate) fn not_utf8() -> Error {
+    attachment("a text file is not UTF-8")
+}
+
+#[cfg(feature = "client")]
+pub(crate) fn unreadable(source: std::io::Error) -> Error {
+    attachment("an attachment could not be read").with_source(source)
 }

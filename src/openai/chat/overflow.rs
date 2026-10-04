@@ -5,6 +5,8 @@
 
 use serde_json::Value;
 
+use super::wire::{CODE, MESSAGE, TYPE};
+
 /// Values of `error.code` or `error.type` that mean the request did not fit.
 const NAMES: [&str; 3] = [
     "context_length_exceeded",
@@ -20,13 +22,13 @@ const PHRASES: [&str; 3] = ["context length", "context size", "context window"];
 /// its message alone.
 pub(crate) fn is_overflow(error: &Value) -> bool {
     let field = |key: &str| error.get(key).and_then(Value::as_str);
-    let named = [field("code"), field("type")]
+    let named = [field(CODE), field(TYPE)]
         .into_iter()
         .flatten()
         .any(|name| NAMES.contains(&name));
 
     named
-        || field("message")
+        || field(MESSAGE)
             .or_else(|| error.as_str())
             .is_some_and(says_overflow)
 }

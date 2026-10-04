@@ -97,11 +97,13 @@ impl Backend for Hyper {
             Method::Post => hyper::Method::POST,
         });
         for (name, value) in &request.headers {
-            let name = HeaderName::from_bytes(name.as_bytes())
-                .map_err(|_| invalid("a header is not valid"))?;
-            let mut value =
-                HeaderValue::from_str(value).map_err(|_| invalid("a header is not valid"))?;
-            value.set_sensitive(name == hyper::header::AUTHORIZATION);
+            let header = HeaderName::from_bytes(name.as_bytes())
+                .ok()
+                .zip(HeaderValue::from_str(value).ok());
+            let Some((name, mut value)) = header else {
+                return Err(invalid("a header is not valid"));
+            };
+            value.set_sensitive(!super::is_plain(name.as_str()));
             builder = builder.header(name, value);
         }
         let body = match request.body {

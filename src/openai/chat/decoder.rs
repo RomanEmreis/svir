@@ -8,7 +8,15 @@ use std::{
 
 use serde_json::{Map, Value};
 
-use super::{overflow, sse::Framer, think::ThinkSplitter};
+use super::{
+    overflow,
+    sse::Framer,
+    think::ThinkSplitter,
+    wire::{
+        CHOICES, CONTENT, DELTA, ERROR, FINISH_REASON, FUNCTION, FUNCTION_TYPE, ID, INDEX, MESSAGE,
+        REASONING, REASONING_CONTENT, ROLE, TOOL_CALLS, TYPE,
+    },
+};
 use crate::{
     Completion, Error, ErrorKind, Event, FinishReason, Limits, Mode, Reasoning, ReasoningSource,
     Think, Timing, ToolCall, ToolCallDelta, Usage,
@@ -160,8 +168,7 @@ impl Decoder {
     /// [`push`](Self::push), has nothing more to report.
     pub fn finish(self) -> Result<(), Error> {
         match self.state {
-            State::Open => Err(Error::new(ErrorKind::TruncatedStream)
-                .with_detail("the stream ended before [DONE]")),
+            State::Open => Err(truncated()),
             State::Completed | State::Failed => Ok(()),
         }
     }
@@ -194,7 +201,7 @@ impl Decoder {
     }
 
     fn chunk(&mut self, chunk: &Map<String, Value>, events: &mut Vec<Event>) -> Result<(), Error> {
-        if let Some(error) = present(chunk, "error") {
+        if let Some(error) = present(chunk, ERROR) {
             return Err(server_error(error));
         }
 
@@ -214,7 +221,7 @@ impl Decoder {
             self.usage(usage)?;
         }
 
-        let choices = match chunk.get("choices") {
+        let choices = match chunk.get(CHOICES) {
             Some(Value::Array(choices)) => choices,
             _ if self.is_strict() => return Err(protocol("a chunk has no choices array")),
             _ => return Ok(()),
@@ -228,7 +235,7 @@ impl Decoder {
         };
 
         if self.is_strict()
-            && (choices.len() != 1 || choice.get("index").and_then(Value::as_u64) != Some(0))
+            && (choices.len() != 1 || choice.get(INDEX).and_then(Value::as_u64) != Some(0))
         {
             return Err(unsupported(
                 "more than one choice, or a choice other than 0",
@@ -252,7 +259,7 @@ impl Decoder {
 
     fn metadata(&mut self, chunk: &Map<String, Value>) -> Result<(), Error> {
         let strict = self.is_strict();
-        for (key, slot) in [("id", &mut self.id), ("model", &mut self.model)] {
+        for (key, slot) in [(ID, &mut self.id), ("model", &mut self.model)] {
             let Some(value) = chunk.get(key).and_then(Value::as_str) else {
                 continue;
             };
@@ -298,21 +305,14 @@ impl Decoder {
         choice: &Map<String, Value>,
         events: &mut Vec<Event>,
     ) -> Result<(), Error> {
-        match choice.get("delta") {
+        match choice.get(DELTA) {
             Some(Value::Object(delta)) => self.delta(delta, events)?,
             None | Some(Value::Null) if !self.is_strict() => {}
             _ => return Err(protocol("a choice has no delta object")),
         }
 
-        if let Some(reason) = present(choice, "finish_reason") {
-            self.finish = Some(match reason.as_str() {
-                Some("stop") => FinishReason::Stop,
-                Some("tool_calls") => FinishReason::ToolCalls,
-                Some("length") => FinishReason::Length,
-                Some("content_filter") => FinishReason::ContentFilter,
-                Some(_) => return Err(unsupported("a finish reason outside the protocol")),
-                None => return Err(protocol("a finish reason is not a string")),
-            });
+        if let Some(reason) = present(choice, FINISH_REASON) {
+            self.finish = Some(finish_reason(reason)?);
         }
         Ok(())
     }
@@ -325,19 +325,18 @@ impl Decoder {
             self.filtered = true;
         }
 
-        let Some(reason) = present(choice, "finish_reason") else {
+        let Some(reason) = present(choice, FINISH_REASON) else {
             return Ok(());
         };
 
-        match reason.as_str() {
-            Some("content_filter") => {
+        match finish_reason(reason)? {
+            FinishReason::ContentFilter => {
                 self.finish = Some(FinishReason::ContentFilter);
                 Ok(())
             }
-            Some(_) => Err(unsupported(
+            _ => Err(unsupported(
                 "an annotation with a finish reason other than content_filter",
             )),
-            None => Err(protocol("a finish reason is not a string")),
         }
     }
 
@@ -347,12 +346,12 @@ impl Decoder {
         for (key, value) in delta {
             let known = match key.as_str() {
                 _ if value.is_null() => true,
-                "role" => value.as_str() == Some("assistant"),
-                "content" | "reasoning_content" | "reasoning" => value.is_string(),
-                "tool_calls" if !value.is_array() => {
+                ROLE => value.as_str() == Some("assistant"),
+                CONTENT | REASONING_CONTENT | REASONING => value.is_string(),
+                TOOL_CALLS if !value.is_array() => {
                     return Err(protocol("tool_calls is not an array"));
                 }
-                "tool_calls" => true,
+                TOOL_CALLS => true,
                 _ => false,
             };
             if !known && strict {
@@ -361,19 +360,19 @@ impl Decoder {
         }
 
         for (key, source) in [
-            ("reasoning_content", ReasoningSource::ReasoningContent),
-            ("reasoning", ReasoningSource::Reasoning),
+            (REASONING_CONTENT, ReasoningSource::ReasoningContent),
+            (REASONING, ReasoningSource::Reasoning),
         ] {
             if let Some(text) = delta.get(key).and_then(Value::as_str) {
                 self.reasoning(source, text, events);
             }
         }
 
-        if let Some(text) = delta.get("content").and_then(Value::as_str) {
+        if let Some(text) = delta.get(CONTENT).and_then(Value::as_str) {
             self.content(text, events);
         }
 
-        if let Some(Value::Array(pieces)) = delta.get("tool_calls") {
+        if let Some(Value::Array(pieces)) = delta.get(TOOL_CALLS) {
             for piece in pieces {
                 self.tool_call(piece, events)?;
             }
@@ -435,13 +434,13 @@ impl Decoder {
         if self.is_strict()
             && fields
                 .keys()
-                .any(|key| !matches!(key.as_str(), "index" | "id" | "type" | "function"))
+                .any(|key| !matches!(key.as_str(), INDEX | ID | TYPE | FUNCTION))
         {
-            return Err(unsupported("a tool call field outside the protocol"));
+            return Err(outside_call());
         }
 
         let index = fields
-            .get("index")
+            .get(INDEX)
             .and_then(Value::as_u64)
             .ok_or_else(|| protocol("a tool call has no index"))?;
 
@@ -449,14 +448,14 @@ impl Decoder {
             return Err(Error::new(ErrorKind::ResponseLimit)
                 .with_detail("more tool calls than the tool-call limit"));
         }
-        if present(fields, "type").is_some_and(|kind| kind != "function") {
+        if present(fields, TYPE).is_some_and(|kind| kind != FUNCTION_TYPE) {
             return Err(unsupported("a tool call that is not a function"));
         }
 
         let strict = self.is_strict();
         let call = self.calls.entry(index).or_default();
         let mut delta = ToolCallDelta::new(index as usize, "");
-        if let Some(id) = present(fields, "id") {
+        if let Some(id) = present(fields, ID) {
             let id = id
                 .as_str()
                 .ok_or_else(|| protocol("a tool call ID is not a string"))?;
@@ -470,7 +469,7 @@ impl Decoder {
             delta.id = Some(id.to_owned());
         }
 
-        if let Some(function) = present(fields, "function") {
+        if let Some(function) = present(fields, FUNCTION) {
             let Value::Object(function) = function else {
                 return Err(protocol("a tool call function is not an object"));
             };
@@ -497,9 +496,7 @@ impl Decoder {
                         call.arguments.push_str(arguments);
                         delta.arguments.push_str(arguments);
                     }
-                    _ if strict => {
-                        return Err(unsupported("a tool call field outside the protocol"));
-                    }
+                    _ if strict => return Err(outside_call()),
                     _ => {}
                 }
             }
@@ -578,20 +575,20 @@ fn present<'a>(object: &'a Map<String, Value>, key: &str) -> Option<&'a Value> {
 /// their current name or the one earlier API versions used.
 fn is_prompt_report(chunk: &Map<String, Value>) -> bool {
     (chunk.contains_key("prompt_filter_results") || chunk.contains_key("prompt_annotations"))
-        && matches!(chunk.get("choices"), Some(Value::Array(choices)) if choices.is_empty())
+        && matches!(chunk.get(CHOICES), Some(Value::Array(choices)) if choices.is_empty())
 }
 
 /// The choice of a chunk that annotates text already sent: one with the offsets of what it
 /// vetted, and no delta.
 fn annotation(chunk: &Map<String, Value>) -> Option<&Map<String, Value>> {
-    let Some(Value::Array(choices)) = chunk.get("choices") else {
+    let Some(Value::Array(choices)) = chunk.get(CHOICES) else {
         return None;
     };
 
     match choices.first() {
         Some(Value::Object(choice))
             if choice.contains_key("content_filter_offsets")
-                && present(choice, "delta").is_none() =>
+                && present(choice, DELTA).is_none() =>
         {
             Some(choice)
         }
@@ -622,11 +619,32 @@ fn unsupported(detail: &'static str) -> Error {
     Error::new(ErrorKind::Unsupported).with_detail(detail)
 }
 
+fn outside_call() -> Error {
+    unsupported("a tool call field outside the protocol")
+}
+
+/// The stream ended before the answer completed.
+pub(crate) fn truncated() -> Error {
+    Error::new(ErrorKind::TruncatedStream).with_detail("the stream ended before [DONE]")
+}
+
+/// A finish reason, which must be one the protocol has.
+fn finish_reason(reason: &Value) -> Result<FinishReason, Error> {
+    match reason.as_str() {
+        Some("stop") => Ok(FinishReason::Stop),
+        Some("tool_calls") => Ok(FinishReason::ToolCalls),
+        Some("length") => Ok(FinishReason::Length),
+        Some("content_filter") => Ok(FinishReason::ContentFilter),
+        Some(_) => Err(unsupported("a finish reason outside the protocol")),
+        None => Err(protocol("a finish reason is not a string")),
+    }
+}
+
 /// An error the server reported inside an open stream: a failure of its own (D29), unless it
 /// says that the request did not fit in the context (D30).
 fn server_error(error: &Value) -> Error {
     let message = error
-        .get("message")
+        .get(MESSAGE)
         .and_then(Value::as_str)
         .or_else(|| error.as_str());
     let reported = if overflow::is_overflow(error) {
@@ -648,7 +666,7 @@ fn error_event(data: &[u8]) -> Error {
     let text = text.trim();
 
     match serde_json::from_str::<Value>(text) {
-        Ok(Value::Object(body)) => match present(&body, "error") {
+        Ok(Value::Object(body)) => match present(&body, ERROR) {
             Some(error) => server_error(error),
             None => server_error(&Value::Object(body)),
         },

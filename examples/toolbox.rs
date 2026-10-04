@@ -18,6 +18,10 @@ use svir::prelude::*;
 /// A model that keeps calling tools is stopped after this many answers.
 const TURNS: usize = 8;
 
+/// The tools, by the names the model calls them by.
+const NOTE: &str = "note";
+const NOTES: &str = "notes";
+
 /// Notes the model keeps during a conversation.
 #[derive(Default)]
 struct Notes {
@@ -31,12 +35,12 @@ struct Note {
 
 impl Toolbox for Notes {
     fn tools(&self) -> Vec<Tool> {
-        let note = Tool::new("note", "Keep a note for later.").schema(json!({
+        let note = Tool::new(NOTE, "Keep a note for later.").schema(json!({
             "type": "object",
             "properties": {"text": {"type": "string"}},
             "required": ["text"]
         }));
-        let notes = Tool::new("notes", "Read back every note kept so far.");
+        let notes = Tool::new(NOTES, "Read back every note kept so far.");
 
         vec![note, notes]
     }
@@ -44,20 +48,23 @@ impl Toolbox for Notes {
     async fn call(&self, call: &ToolCall) -> ToolResult {
         let mut kept = self.kept.lock().expect("no holder of the lock panics");
 
-        // A failure is a result too: the model reads it and can try again.
-        let content = match call.name.as_str() {
-            "note" => match call.parse::<Note>() {
+        let answer = match call.name.as_str() {
+            NOTE => match call.parse::<Note>() {
                 Ok(note) => {
                     kept.push(note.text);
-                    format!("kept as note {}", kept.len())
+                    Ok(format!("kept as note {}", kept.len()))
                 }
-                Err(error) => format!("error: invalid arguments: {error}"),
+                Err(error) => Err(format!("invalid arguments: {error}")),
             },
-            "notes" => kept.join("\n"),
-            other => format!("error: no tool named {other}"),
+            NOTES => Ok(kept.join("\n")),
+            other => Err(format!("no tool named {other}")),
         };
 
-        ToolResult::new(&call.id, content)
+        // A failure is a result too: the model reads it and can try again.
+        match answer {
+            Ok(content) => ToolResult::new(&call.id, content),
+            Err(message) => ToolResult::error(&call.id, message),
+        }
     }
 }
 

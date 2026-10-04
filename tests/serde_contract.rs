@@ -90,9 +90,11 @@ fn a_request_serializes_as_documented() {
             Message::user("Compare")
                 .with(Image::path("a.png"))
                 .with(Image::bytes(vec![1u8, 2, 3], "image/jpeg"))
-                .with(TextFile::text("notes.txt", "hi")),
+                .with(TextFile::text("notes.txt", "hi"))
+                .with(TextFile::path("diff.patch").escaped_len(120)),
         )
-        .tool_result("call-a", "42");
+        .tool_result("call-a", "42")
+        .tool_results([ToolResult::error("call-b", "no tool named lookup")]);
 
     let value = serde_json::to_value(&request).unwrap();
     assert_eq!(
@@ -105,9 +107,13 @@ fn a_request_serializes_as_documented() {
                     {"text": "Compare"},
                     {"image": {"path": "a.png", "media_type": "image/png"}},
                     {"image": {"bytes": "AQID", "media_type": "image/jpeg"}},
-                    {"file": {"name": "notes.txt", "bytes": "aGk="}}
+                    {"file": {"name": "notes.txt", "bytes": "aGk="}},
+                    {"file": {"name": "diff.patch", "path": "diff.patch", "escaped_len": 120}}
                 ]},
-                {"role": "tool", "parts": [{"tool_result": {"call_id": "call-a", "content": "42"}}]}
+                {"role": "tool", "parts": [{"tool_result": {"call_id": "call-a", "content": "42"}}]},
+                {"role": "tool", "parts": [{"tool_result": {
+                    "call_id": "call-b", "content": "no tool named lookup", "is_error": true
+                }}]}
             ],
             "max_tokens": 16,
             "reasoning": "xhigh"

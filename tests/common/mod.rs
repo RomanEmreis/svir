@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use svir::{
-    Effort, Image, Message, Reasoning, Request, Role, TextFile, Tool, ToolCall, ToolResult,
+    Effort, Image, Message, Reasoning, Request, Role, Source, TextFile, Tool, ToolCall, ToolResult,
 };
 
 pub mod server;
@@ -135,12 +135,19 @@ pub fn request(
                     let key = value.as_str().unwrap();
                     let attachment = &attachments[key];
                     let name = attachment["name"].as_str().unwrap();
-                    built.with(match place {
+                    let mut file = match place {
                         Attachments::Files(dir) => TextFile::path(dir.join(key)).name(name),
                         Attachments::Memory => {
-                            TextFile::text(name, String::from_utf8(content(attachment)).unwrap())
+                            // Bytes as given, so a file that is not UTF-8 reaches the encoder.
+                            let mut file = TextFile::text(name, "");
+                            file.source = Source::Bytes(content(attachment).into());
+                            file
                         }
-                    })
+                    };
+                    if let Some(escaped) = attachment["escaped_len"].as_u64() {
+                        file = file.escaped_len(escaped);
+                    }
+                    built.with(file)
                 }
                 "reasoning" => {
                     let source = serde_json::from_value(value["source"].clone()).unwrap();
@@ -149,7 +156,11 @@ pub fn request(
                 "tool_call" => {
                     built.with(ToolCall::new(text("id"), text("name"), text("arguments")))
                 }
-                "tool_result" => built.with(ToolResult::new(text("call_id"), text("content"))),
+                "tool_result" => built.with(if value["is_error"].as_bool() == Some(true) {
+                    ToolResult::error(text("call_id"), text("content"))
+                } else {
+                    ToolResult::new(text("call_id"), text("content"))
+                }),
                 other => panic!("unknown part {other}"),
             };
         }

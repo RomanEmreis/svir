@@ -18,7 +18,7 @@ use tokio::time::{Instant, Sleep};
 use crate::{
     Completion, Error, ErrorKind, Event,
     http::{Backend, Hyper},
-    openai::chat::Decoder,
+    openai::chat::{Decoder, truncated},
 };
 
 /// A timer. Boxed so that the streams stay `Unpin`, and `next` needs no pinning by the caller.
@@ -166,7 +166,7 @@ impl<B: Backend> EventStream<B> {
             }
         }
 
-        Err(Error::new(ErrorKind::TruncatedStream).with_detail("the stream ended before [DONE]"))
+        Err(truncated())
     }
 
     /// Fails the stream with [`ErrorKind::Timeout`] if nothing of the answer (text, reasoning, or

@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.1.4
+
+### Added
+
+* **`ToolResult::is_error`**, set by `ToolResult::error(call_id, message)`:
+  the call failed, and the content says what went wrong. Chat Completions has
+  no field for it, so the encoder sends `error: ` before the content. The
+  flag is in the serde form only when it is true (D37).
+* **`ClientBuilder::header(name, value)`**: a header sent with every request,
+  the model listing too, for a gateway or a hosted endpoint that asks for one.
+  Its value is treated as a credential: withheld from `Debug` and sent as a
+  sensitive header. A name or value that cannot be sent, and the headers svir
+  writes itself (`authorization`, `content-type`, `content-length`, `accept`,
+  `host`, `transfer-encoding`, `connection`), are `ErrorKind::Config` when the
+  client is built (D38).
+* **`TextFile::escaped_len(n)` and `svir::body::escaped_len(bytes)`**: a text
+  file's length once escaped into a JSON string, measured once by the caller,
+  for example when the file was stored. The body is then built without
+  reading the file; only its size is looked up. A length the file does not
+  have fails with `ErrorKind::Attachment`, when the body is built or while it
+  streams (D39).
+
+### Changed
+
+* **`Tools` flags a failed call instead of writing `error: ` into the
+  content.** The result is `is_error`, and its content is the message alone.
+  What goes on the wire for Chat Completions is the same as before.
+* **A text file is checked to be UTF-8 while the body streams**, not only when
+  it is measured, so a declared length cannot carry other bytes into the
+  request. It fails with `ErrorKind::Attachment`.
+
 ## 0.1.3
 
 ### Added

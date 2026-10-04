@@ -11,7 +11,10 @@ mod sse;
 #[cfg(feature = "client")]
 pub(crate) mod status;
 mod think;
+mod wire;
 
 pub use crate::body::Body;
 pub use decoder::Decoder;
+#[cfg(feature = "client")]
+pub(crate) use decoder::truncated;
 pub use encoder::Encoder;

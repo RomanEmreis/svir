@@ -1,0 +1,7 @@
+{
+  "description": "A text file that is not UTF-8 fails even with its escaped length declared, when nothing reads it before the body streams.",
+  "request": {"model": "m", "messages": [{"role": "user", "parts": [{"file": "notes"}]}]},
+  "attachments": {"notes": {"name": "notes.txt", "hex": "61ff62", "escaped_len": 3}},
+  "options": {"block_bytes": [3]},
+  "expect": {"error": "attachment"}
+}

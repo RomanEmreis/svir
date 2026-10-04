@@ -14,6 +14,10 @@ use std::{
     time::Duration,
 };
 
+use ::hyper::header::{
+    ACCEPT, AUTHORIZATION, CONNECTION, CONTENT_LENGTH, CONTENT_TYPE, HOST, HeaderMap, HeaderName,
+    HeaderValue, RETRY_AFTER, TRANSFER_ENCODING,
+};
 use bytes::Bytes;
 use futures_core::Stream;
 use serde::{Deserialize, Serialize};
@@ -37,6 +41,16 @@ const MESSAGE_WAIT: Duration = Duration::from_millis(300);
 const ERROR_BODY_LIMIT: usize = 64 * 1024;
 /// The most of an API key file that is read.
 const KEY_FILE_LIMIT: u64 = 4096;
+/// Headers svir writes itself, or that frame the request, which a caller may not set (D38).
+const RESERVED_HEADERS: [HeaderName; 7] = [
+    AUTHORIZATION,
+    CONTENT_TYPE,
+    CONTENT_LENGTH,
+    ACCEPT,
+    HOST,
+    TRANSFER_ENCODING,
+    CONNECTION,
+];
 
 /// A client for one model server.
 ///
@@ -72,6 +86,9 @@ struct Inner<B> {
     chat_url: Box<str>,
     models_url: Box<str>,
     authorization: Option<Secret>,
+    /// The caller's headers, one value per name, every value marked sensitive: `Debug` shows
+    /// it as `Sensitive`.
+    headers: HeaderMap,
     /// The layers, outermost first.
     layers: Box<[Box<dyn Erased<B>>]>,
     idle: Option<Duration>,
@@ -99,6 +116,7 @@ impl Client {
         ClientBuilder {
             url: url.into(),
             key: Key::None,
+            headers: Vec::new(),
             allow_http: false,
             include_usage: true,
             mode: Mode::default(),
@@ -236,7 +254,7 @@ impl<B: Backend> Client<B> {
             let status = response.status;
             return Ok(Err((status, self.rejected(&mut response).await)));
         }
-        if !status::is_event_stream(response.header("content-type")) {
+        if !status::is_event_stream(response.header(CONTENT_TYPE.as_str())) {
             return Err(Error::new(ErrorKind::Unsupported)
                 .with_detail("the response is not an event stream"));
         }
@@ -246,12 +264,24 @@ impl<B: Backend> Client<B> {
     fn request(&self, method: Method, url: String, body: Option<HttpBody>) -> HttpRequest {
         let mut headers = Vec::new();
         if body.is_some() {
-            headers.push(("content-type".to_owned(), "application/json".to_owned()));
-            headers.push(("accept".to_owned(), "text/event-stream".to_owned()));
+            headers.push((
+                CONTENT_TYPE.as_str().to_owned(),
+                "application/json".to_owned(),
+            ));
+            headers.push((ACCEPT.as_str().to_owned(), status::EVENT_STREAM.to_owned()));
         }
         if let Some(key) = &self.inner.authorization {
-            headers.push(("authorization".to_owned(), format!("Bearer {}", key.0)));
+            headers.push((
+                AUTHORIZATION.as_str().to_owned(),
+                format!("Bearer {}", key.0),
+            ));
         }
+        // Validated as ASCII when the client was built, so nothing is lost on the way to text.
+        headers.extend(self.inner.headers.iter().map(|(name, value)| {
+            let value = String::from_utf8_lossy(value.as_bytes()).into_owned();
+            (name.as_str().to_owned(), value)
+        }));
+
         HttpRequest {
             method,
             url,
@@ -280,7 +310,11 @@ impl<B: Backend> Client<B> {
             MESSAGE_WAIT
         };
         let body = read_some(&mut response.body, ERROR_BODY_LIMIT, wait).await;
-        status::classify(response.status, response.header("retry-after"), &body)
+        status::classify(
+            response.status,
+            response.header(RETRY_AFTER.as_str()),
+            &body,
+        )
     }
 }
 
@@ -289,6 +323,7 @@ impl<B> fmt::Debug for Client<B> {
         f.debug_struct("Client")
             .field("url", &self.inner.chat_url)
             .field("api_key", &self.inner.authorization)
+            .field("headers", &self.inner.headers)
             .field("mode", &self.inner.mode)
             .finish_non_exhaustive()
     }
@@ -299,6 +334,8 @@ impl<B> fmt::Debug for Client<B> {
 pub struct ClientBuilder<B = Hyper> {
     url: String,
     key: Key,
+    /// As given; validated by `build`.
+    headers: Vec<(String, String)>,
     allow_http: bool,
     include_usage: bool,
     mode: Mode,
@@ -343,6 +380,32 @@ impl<B> ClientBuilder<B> {
     /// nothing else; surrounding whitespace is dropped.
     pub fn api_key_file(mut self, path: impl Into<PathBuf>) -> Self {
         self.key = Key::File(path.into());
+        self
+    }
+
+    /// Sends header `name` with every request, the model listing too: for a gateway or a hosted
+    /// endpoint that asks for attribution, an organization or a project, or a key of its own.
+    /// Setting a name again replaces the earlier value; names are not case-sensitive.
+    ///
+    /// The value may be a credential, so it is withheld wherever the client or its requests are
+    /// shown. A name that is not a valid header name, a value with a line break or another
+    /// control character, and the headers svir writes itself (`authorization`, `content-type`,
+    /// `content-length`, `accept`, `host`, `transfer-encoding`, `connection`) are
+    /// [`ErrorKind::Config`] when the client is built. The API key goes through
+    /// [`api_key`](Self::api_key).
+    ///
+    /// ```no_run
+    /// # use svir::prelude::*;
+    /// # fn build() -> Result<(), svir::Error> {
+    /// let client = Client::openai("https://gateway.example.com/v1")
+    ///     .api_key_env("GATEWAY_KEY")
+    ///     .header("x-title", "My App")
+    ///     .build()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.headers.push((name.into(), value.into()));
         self
     }
 
@@ -421,6 +484,7 @@ impl<B> ClientBuilder<B> {
         ClientBuilder {
             url: self.url,
             key: self.key,
+            headers: self.headers,
             allow_http: self.allow_http,
             include_usage: self.include_usage,
             mode: self.mode,
@@ -437,8 +501,8 @@ impl<B> ClientBuilder<B> {
 
     /// Validates the configuration and builds the client.
     ///
-    /// Fails with [`ErrorKind::Config`] for a URL that is not acceptable or an API key that
-    /// cannot be read.
+    /// Fails with [`ErrorKind::Config`] for a URL that is not acceptable, an API key that
+    /// cannot be read, or a header that cannot be sent.
     pub fn build(self) -> Result<Client<B>, Error> {
         if let Some(misuse) = self.misuse {
             return Err(config(misuse));
@@ -446,6 +510,7 @@ impl<B> ClientBuilder<B> {
 
         let base = base_url(&self.url, self.allow_http)?;
         let authorization = self.key.resolve()?;
+        let headers = headers(self.headers)?;
         let http = match self.http {
             Http::Given(backend) => backend,
             Http::BuiltIn(make) => make(self.connect_timeout)?,
@@ -456,6 +521,7 @@ impl<B> ClientBuilder<B> {
                 chat_url: format!("{base}/v1/chat/completions").into_boxed_str(),
                 models_url: format!("{base}/v1/models").into_boxed_str(),
                 authorization,
+                headers,
                 layers: self.layers.into_boxed_slice(),
                 idle: self.idle_timeout,
                 include_usage: self.include_usage,
@@ -543,13 +609,44 @@ impl Key {
     }
 }
 
+/// Validates the caller's headers. A name given again replaces the earlier value, and every value
+/// is marked sensitive. An error names the header, never its value.
+fn headers(given: Vec<(String, String)>) -> Result<HeaderMap, Error> {
+    let mut headers = HeaderMap::with_capacity(given.len());
+    for (name, value) in given {
+        let name = HeaderName::from_bytes(name.as_bytes())
+            .map_err(|_| config("a header name is not valid"))?;
+        if RESERVED_HEADERS.contains(&name) {
+            return Err(config(format!(
+                "the header {name} is set by svir, not by the caller"
+            )));
+        }
+        // `HeaderValue` also takes bytes above ASCII, which it cannot give back as text, and the
+        // HTTP seam carries text; what a server makes of them varies anyway.
+        let mut value = HeaderValue::from_str(&value)
+            .ok()
+            .filter(|value| value.to_str().is_ok())
+            .ok_or_else(|| {
+                config(format!(
+                    "the value of header {name} is not valid: it holds a line break, another \
+                     control character, or text that is not ASCII"
+                ))
+            })?;
+        value.set_sensitive(true);
+
+        headers.insert(name, value);
+    }
+
+    Ok(headers)
+}
+
 /// An API key. Never shown.
 #[derive(Clone)]
 struct Secret(Box<str>);
 
 impl fmt::Debug for Secret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("<withheld>")
+        f.write_str(crate::http::WITHHELD)
     }
 }
 
@@ -605,21 +702,22 @@ fn base_url(url: &str, allow_http: bool) -> Result<String, Error> {
     if uri.query().is_some() {
         return Err(config("the base URL has a query"));
     }
-    match scheme {
-        "https" if cfg!(any(feature = "tls", feature = "tls-aws-lc")) => {}
-        "https" => {
-            return Err(config(
-                "an https URL needs the `tls` or the `tls-aws-lc` feature",
-            ));
-        }
-        "http" if allow_http || is_loopback(authority.host()) => {}
-        "http" => {
-            return Err(config(
-                "plain HTTP to a host that is not loopback; use https, or allow_http()",
-            ));
-        }
+    let secure = match scheme {
+        "https" => true,
+        "http" => false,
         _ => return Err(config("the base URL is not http or https")),
+    };
+    if secure && !cfg!(any(feature = "tls", feature = "tls-aws-lc")) {
+        return Err(config(
+            "an https URL needs the `tls` or the `tls-aws-lc` feature",
+        ));
     }
+    if !secure && !allow_http && !is_loopback(authority.host()) {
+        return Err(config(
+            "plain HTTP to a host that is not loopback; use https, or allow_http()",
+        ));
+    }
+
     let path = uri.path().trim_end_matches('/');
     let path = path.strip_suffix("/v1").unwrap_or(path);
     Ok(format!("{scheme}://{authority}{path}"))
@@ -690,6 +788,48 @@ mod tests {
                 .is_err()
         );
         assert!(Key::None.resolve().unwrap().is_none());
+    }
+
+    #[test]
+    fn a_header_is_validated_and_never_shown() {
+        let given = |pairs: &[(&str, &str)]| {
+            headers(
+                pairs
+                    .iter()
+                    .map(|(name, value)| (name.to_string(), value.to_string()))
+                    .collect(),
+            )
+        };
+
+        let kept = given(&[
+            ("X-Title", "first"),
+            ("x-gateway-key", "s3cret"),
+            ("x-title", "app"),
+        ])
+        .unwrap();
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept["x-title"], "app");
+        assert!(kept.values().all(HeaderValue::is_sensitive));
+        let shown = format!("{kept:?}");
+        assert!(
+            !shown.contains("s3cret") && !shown.contains("app"),
+            "{shown}"
+        );
+
+        for name in RESERVED_HEADERS {
+            let error = given(&[(&name.as_str().to_ascii_uppercase(), "x")]).unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::Config, "{name}");
+        }
+        for (name, value) in [
+            ("x title", "s3cret"),
+            ("", "s3cret"),
+            ("x-title", "a\r\nx-injected: 1"),
+            ("x-title", "caf\u{e9}"),
+        ] {
+            let error = given(&[(name, value)]).unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::Config, "{name:?} {value:?}");
+            assert!(!format!("{error} {error:?}").contains(value), "{error:?}");
+        }
     }
 
     #[test]

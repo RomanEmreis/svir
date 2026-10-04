@@ -130,7 +130,8 @@ documented, tested table.
 no I/O when created: `Image::path(p)` and `TextFile::path(p)` record the path, and the size is
 measured when the body is built and verified while it streams (P13). The media type comes from the
 extension or `.media_type(..)`. In memory: `Image::bytes(buf, media_type)`,
-`TextFile::text(name, text)`. An empty text next to images is left out.
+`TextFile::text(name, text)`. An empty text next to images is left out. A text file's escaped
+length can be declared, `.escaped_len(n)`, so the file is not read before it is sent (D39).
 
 **Advanced use.** `svir::openai::chat::{Encoder, Decoder, Body}` for a custom transport or a proxy;
 `Decoder::strict()` and `Decoder::lenient()` with `.limits(..)` and `.think(..)`.
@@ -237,7 +238,7 @@ Validating the arguments is deserializing them into the handler's type with serd
 do not fit never reach the handler. There is no separate JSON Schema validator, which would be a
 heavy dependency for what the type already says. `tools.call(&call)` runs one handler; a failure
 (an unknown tool, arguments that do not fit, an `Err` from the handler) becomes a tool result for
-the model, `error: <what went wrong>`, not an error of the request (but see O14). A handler
+the model, flagged as a failure (D37), not an error of the request. A handler
 returns a string, a JSON value, or a `Result` of either. `call.parse::<T>()` parses raw arguments
 for callers without a registry. Resolves O8.
 
@@ -513,6 +514,64 @@ retry (D11), as an overflow is (D26). Otherwise the blocked prompt is sent twice
 evaluation billed twice. More generally, the retry follows only a rejection whose body explains
 nothing, `Unsupported`.
 
+### D37. A failed tool result is flagged
+
+Resolves O14. `ToolResult` has `is_error`, set by `ToolResult::error(call_id, message)`. `Tools`
+sets it for an unknown tool, arguments that do not fit, and an `Err` from a handler, and the
+content is then what went wrong, with nothing added.
+
+Each wire API tells the model as it can. Chat Completions has no field for it, so its encoder
+writes `error: ` before the content. That is the text `Tools` sent before the flag existed, so
+nothing changes on the wire for its users, and the flag is not dropped for a result the caller
+built. An API with a field of its own sets that field and sends the content as it is, with no
+prefix.
+
+It is a field now, before a second wire API exists, because it changes the serde form of a public
+type (D22), which only gets more expensive. The change is additive: `is_error` is written only
+when it is true.
+
+### D38. The caller's headers are set on the builder
+
+`ClientBuilder::header(name, value)` adds a header to every request the client sends, the model
+listing included: for a gateway or a hosted endpoint that asks for attribution, an organization or
+a project, or a key under a name of its own. Names are not case-sensitive and are sent lowercase;
+setting a name again replaces the earlier value.
+
+`build()` validates them, `Config` otherwise: a name must be a header name; a value must be ASCII
+with no control character but a tab, so it cannot end the header early and start another; and the
+headers svir writes itself, or that frame the request, are refused: `authorization`,
+`content-type`, `content-length`, `accept`, `host`, `transfer-encoding`, `connection`. The API
+key stays with `api_key` (D17), where it is checked and withheld.
+
+Any value may be a credential, so every one is treated as one: withheld from the `Debug` output
+of the client and of an `HttpRequest`, and sent as a sensitive header by the built-in backend.
+Only `content-type` and `accept` are shown. An error names the header, never its value.
+
+Not part of this: a public constructor for the built-in `Hyper` backend, so that a caller's
+backend could wrap it, and headers per request, which a layer cannot add since layers work above
+HTTP. Each is its own decision, when it is needed. The headers are validated and kept with the
+`http` crate's types, which hyper brings, and handed to the backend as text, as the seam carries
+them (D25); whether the seam should carry those types instead is O17.
+
+### D39. A text file's escaped length can be declared
+
+The length of a text file once escaped into a JSON string takes a read of the whole file to
+measure, before the file is read again to be sent. An application that keeps files, a chat
+backend for one, can measure it once, as the file arrives, and store it.
+`TextFile::escaped_len(n)` declares it, and `svir::body::escaped_len(bytes)` measures it as svir
+escapes, summed over the blocks the file is read in. With it, `encode_files` looks up the file's
+size and reads nothing. The declared length is checked where it is used:
+
+- a length the size rules out (every byte escapes to 1, 2, or 6 bytes) fails when the body is
+  built;
+- otherwise the body stream counts what the file encodes to, as for any attachment, and fails
+  with `Attachment` rather than send a body that disagrees with its `Content-Length` (P13);
+- the stream checks that a text file is UTF-8 as it reads it, since nothing may have read it
+  before. Without a declared length the file is checked twice, when measured and when sent,
+  which also catches a file replaced in between by one of the same lengths that is not text;
+- text in memory is measured anyway, and a declared length that disagrees fails when the body is
+  built.
+
 
 ### P1. Edition 2024; MSRV 1.85
 
@@ -528,8 +587,8 @@ that is being forwarded elsewhere.
 `Encoder::encode` does no I/O either, and takes attachments held in memory; `Body::into_bytes`
 gives the whole body. Attachments held as file paths need the `client` feature (D14):
 `Encoder::encode_files` measures them first (an image by its size, a text file by one read that
-also checks it is UTF-8), and `Body::into_stream` reads them again, a block at a time, as the body
-is sent.
+also checks it is UTF-8, or by its size when its escaped length is declared, D39), and
+`Body::into_stream` reads them again, a block at a time, as the body is sent.
 
 ### P3. Superseded by D16
 
@@ -601,13 +660,15 @@ can reject. D21 is the one exception.
   each file is wrapped in `<file name="...">` tags with `"` in the name written as `&quot;`.
 - With images, content is an array: that one text part (if there is any text), then the images
   as data URLs, in the order given.
-- A tool result's content is the caller's string. svir does not wrap or serialize outcomes.
+- A tool result's content is the caller's string. svir does not wrap or serialize outcomes; a
+  failed result (D37) has `error: ` before it.
 - Reasoning goes back only when the request asks for it, under the key it arrived with;
   reasoning split out of `<think>` tags never goes back (D23).
 
 ### P13. Attachment failures are their own error kind
 
-An attachment that cannot be read, or no longer has its recorded size, fails the body stream with
+An attachment that cannot be read, no longer has its recorded size, does not encode to its
+recorded or declared length, or is a text file that is not UTF-8, fails the body stream with
 `Attachment`, which is not retryable. It is a local failure, not something the server did.
 
 ### P14. Admission
@@ -633,12 +694,25 @@ stands in for its length in tokens, which it never underestimates (but see O5).
 - **O7. `Retry-After` as an HTTP date.** Only numeric seconds are handled today.
 - **O9. An optional loop helper.** See D6.
 - **O10. Model listing.** Is the non-chat model filter part of svir or of the application?
-- **O14. Failed tool results.** A `Toolbox` turns a failure into a tool result. Should
-  `ToolResult` carry an `is_error` flag? Some APIs have one; Chat Completions would carry it only
-  in the text.
+- **O17. The HTTP seam on `http` types.** `HttpRequest` and `HttpResponse` carry headers as
+  `(String, String)` pairs, so a backend converts them both ways. `HeaderMap` would pass straight
+  through hyper or another client built on `http` 1.x, and keep the sensitive mark, but changes a
+  public type and ties svir's public API to `http`'s major version. A change for 0.2 at the
+  earliest.
+- **O18. Binary attachments beyond images.** Audio, PDF, video, and whatever comes next. The
+  working idea: one part for a binary attachment with its media type, of which `Image` is a
+  case, rather than a type per kind, since the caller gives the same for each (bytes or a path,
+  and a media type) and only the wire layout differs, which the encoder derives from the media
+  type. `TextFile` stays its own part: sending a file as text inside the message is the caller's
+  choice, not a kind of file, and a media type says too little about text. A media type an API
+  has no layout for is `Unsupported` before anything is sent; converting formats (a PDF to text,
+  a video to frames) is the application's. Open: the name (`Part::File` is the text file), the
+  layout per wire API (Chat Completions `input_audio` and `file` parts; Anthropic's `document`
+  and the Responses API's `input_file`, with O6), what servers accept, seen live, and admission
+  for large media (O5).
 
 Resolved: O1 (API names and DX) by D13-D18, O2 (`<think>` splitting) by D23, O4 (server error
 messages) by D19, O3 (compatibility retry versus context overflow) by D26, O8 (tool arguments)
 by D18, O11 (assistant content with tool calls) by D24, O13 (errors inside the stream) by D29,
 O15 (an overflow without a code) by D30, O16 (whitespace before the answer) by D31, O12
-(answer-changing anomalies in lenient mode) by D35.
+(answer-changing anomalies in lenient mode) by D35, O14 (failed tool results) by D37.

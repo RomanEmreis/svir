@@ -1,0 +1,6 @@
+{
+  "description": "A declared escaped length the file does not have fails, rather than sending a body that disagrees with its length.",
+  "request": {"model": "m", "messages": [{"role": "user", "parts": [{"file": "notes"}]}]},
+  "attachments": {"notes": {"name": "notes.txt", "text": "a \"b\"", "escaped_len": 5}},
+  "expect": {"error": "attachment"}
+}

@@ -52,7 +52,7 @@ impl Framer {
         if byte != b'\n' {
             self.line.push(byte);
             if self.line.len() + self.data.len() > self.limits.event_bytes {
-                return Err(limit("an event is longer than the event-byte limit"));
+                return Err(event_too_long());
             }
             return Ok(None);
         }
@@ -100,17 +100,21 @@ impl Framer {
                 }
                 self.data.extend_from_slice(value);
                 if self.data.len() > self.limits.event_bytes {
-                    return Err(limit("an event is longer than the event-byte limit"));
+                    return Err(event_too_long());
                 }
             }
             b"id" | b"retry" => {}
-            b"event" if value == b"message" => {}
-            b"event" if value == b"error" => self.kind = Kind::Error,
-            b"event" if self.mode == Mode::Lenient => self.kind = Kind::Foreign,
+            b"event" => match value {
+                b"message" => {}
+                b"error" => self.kind = Kind::Error,
+                _ if self.mode == Mode::Lenient => self.kind = Kind::Foreign,
+                _ => return Err(unsupported("a server-sent event type outside the protocol")),
+            },
             _ if self.mode == Mode::Lenient => {}
             _ => {
-                return Err(Error::new(ErrorKind::Unsupported)
-                    .with_detail("a server-sent event field outside the protocol"));
+                return Err(unsupported(
+                    "a server-sent event field outside the protocol",
+                ));
             }
         }
         Ok(())
@@ -119,6 +123,14 @@ impl Framer {
 
 fn limit(detail: &'static str) -> Error {
     Error::new(ErrorKind::ResponseLimit).with_detail(detail)
+}
+
+fn event_too_long() -> Error {
+    limit("an event is longer than the event-byte limit")
+}
+
+fn unsupported(detail: &'static str) -> Error {
+    Error::new(ErrorKind::Unsupported).with_detail(detail)
 }
 
 #[cfg(test)]

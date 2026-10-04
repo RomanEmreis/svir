@@ -5,8 +5,23 @@
 //! file, even one that ends inside a character, and the escaped length of a file can be measured
 //! before the file is sent.
 
-/// How many bytes `bytes` take once escaped into a JSON string.
-pub(crate) fn escaped_len(bytes: &[u8]) -> u64 {
+/// How many bytes `bytes` take once escaped into a JSON string, as svir escapes them: the length
+/// [`TextFile::escaped_len`](crate::TextFile::escaped_len) declares.
+///
+/// Escaping works byte by byte, so the length of a file is the sum of the lengths of the blocks
+/// it is read in, whatever they are, even a block that ends inside a character. It does not
+/// check that the bytes are UTF-8.
+///
+/// ```
+/// use svir::body::escaped_len;
+///
+/// let text = "say \"hi\"\n".as_bytes();
+/// let (head, tail) = text.split_at(5);
+///
+/// assert_eq!(escaped_len(text), 12);
+/// assert_eq!(escaped_len(head) + escaped_len(tail), 12);
+/// ```
+pub fn escaped_len(bytes: &[u8]) -> u64 {
     bytes.iter().map(|&byte| escaped_byte_len(byte)).sum()
 }
 
