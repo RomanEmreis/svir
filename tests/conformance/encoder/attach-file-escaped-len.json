@@ -1,0 +1,23 @@
+{
+  "description": "A text file whose escaped length the caller measured is sent the same, without a read of the file before the body streams.",
+  "request": {
+    "model": "m",
+    "messages": [{"role": "user", "parts": [{"file": "notes"}, {"text": "Summarize."}]}]
+  },
+  "attachments": {
+    "notes": {"name": "notes.txt", "text": "say \"hi\"\tC:\\temp\n\u0001caf\u00e9", "escaped_len": 33}
+  },
+  "options": {"block_bytes": [3, 6]},
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": "<file name=\"notes.txt\">\nsay \"hi\"\tC:\\temp\n\u0001caf\u00e9\n</file>\n\nSummarize."
+        }
+      ]
+    }
+  }
+}

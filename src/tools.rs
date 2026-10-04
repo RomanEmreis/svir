@@ -38,7 +38,8 @@ pub trait Toolbox {
     /// The tools, as they are described to the model.
     fn tools(&self) -> Vec<Tool>;
 
-    /// Answers one call. A failure is a result too: the model is told what went wrong.
+    /// Answers one call. A failure is a result too, made with [`ToolResult::error`]: the model is
+    /// told what went wrong.
     fn call(&self, call: &ToolCall) -> impl Future<Output = ToolResult> + Send;
 
     /// Answers calls one after another, in order.
@@ -181,9 +182,11 @@ impl Toolbox for Tools {
             Some((_, handler)) => handler(&call.arguments).await,
             None => Err(format!("no tool named {}", call.name)),
         };
-        let content = answer.unwrap_or_else(|error| format!("error: {error}"));
 
-        ToolResult::new(&call.id, content)
+        match answer {
+            Ok(content) => ToolResult::new(&call.id, content),
+            Err(message) => ToolResult::error(&call.id, message),
+        }
     }
 }
 
@@ -244,14 +247,17 @@ mod tests {
     #[test]
     fn failures_are_results_for_the_model() {
         let tools = tools();
-        let content = |name: &str, arguments: &str| {
-            now(tools.call(&ToolCall::new("id", name, arguments))).content
+        let failure = |name: &str, arguments: &str| {
+            let result = now(tools.call(&ToolCall::new("id", name, arguments)));
+            assert!(result.is_error, "{name} {arguments}");
+            result.content
         };
 
-        assert_eq!(content("fail", ""), "error: out of order");
-        assert_eq!(content("missing", "{}"), "error: no tool named missing");
-        assert!(content("double", r#"{"value":"x"}"#).starts_with("error: invalid arguments"));
-        assert!(content("double", "{").starts_with("error: invalid arguments"));
+        assert_eq!(failure("fail", ""), "out of order");
+        assert_eq!(failure("missing", "{}"), "no tool named missing");
+        assert!(failure("double", r#"{"value":"x"}"#).starts_with("invalid arguments"));
+        assert!(failure("double", "{").starts_with("invalid arguments"));
+        assert!(!now(tools.call(&ToolCall::new("id", "double", r#"{"value":1}"#))).is_error);
     }
 
     #[test]

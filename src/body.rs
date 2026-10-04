@@ -10,6 +10,7 @@ pub(crate) mod escape;
 #[cfg(feature = "client")]
 mod stream;
 
+pub use escape::escaped_len;
 #[cfg(feature = "client")]
 pub use stream::BodyStream;
 

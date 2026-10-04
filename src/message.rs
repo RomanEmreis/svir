@@ -213,6 +213,11 @@ pub struct TextFile {
     /// Where the bytes are. They must be UTF-8 text.
     #[serde(flatten)]
     pub source: Source,
+    /// The file's length once escaped into a JSON string, when the caller measured it already,
+    /// with [`body::escaped_len`](crate::body::escaped_len). See
+    /// [`escaped_len`](Self::escaped_len).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub escaped_len: Option<u64>,
 }
 
 impl TextFile {
@@ -227,6 +232,7 @@ impl TextFile {
         Self {
             name,
             source: Source::Path(path),
+            escaped_len: None,
         }
     }
 
@@ -235,12 +241,26 @@ impl TextFile {
         Self {
             name: name.into(),
             source: Source::Bytes(Bytes::from(text.into())),
+            escaped_len: None,
         }
     }
 
     /// Sets the name the model is told.
     pub fn name(mut self, name: impl Into<String>) -> Self {
         self.name = name.into();
+        self
+    }
+
+    /// Declares the file's length once escaped into a JSON string, as
+    /// [`body::escaped_len`](crate::body::escaped_len) measures it, for example when the file
+    /// was stored. The body is then built without reading the file first: its size is all that
+    /// is looked up.
+    ///
+    /// A length the file does not have fails with [`ErrorKind::Attachment`](crate::ErrorKind::Attachment),
+    /// when the body is built or while it streams, and so does a file that is not UTF-8: no
+    /// body goes out that disagrees with its length.
+    pub fn escaped_len(mut self, escaped: u64) -> Self {
+        self.escaped_len = Some(escaped);
         self
     }
 }
@@ -253,6 +273,10 @@ pub struct ToolResult {
     pub call_id: String,
     /// The result. Structured results are serialized by the caller.
     pub content: String,
+    /// The call failed, and `content` says what went wrong. Each wire API tells the model as it
+    /// can: Chat Completions has no field for it, and sends `error: ` before the content.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_error: bool,
 }
 
 impl ToolResult {
@@ -261,6 +285,16 @@ impl ToolResult {
         Self {
             call_id: call_id.into(),
             content: content.into(),
+            is_error: false,
+        }
+    }
+
+    /// The failure of call `call_id`: `message` says what went wrong, so the model can try
+    /// again or tell the user.
+    pub fn error(call_id: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            is_error: true,
+            ..Self::new(call_id, message)
         }
     }
 }

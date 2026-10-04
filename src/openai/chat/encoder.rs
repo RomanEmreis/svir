@@ -96,8 +96,8 @@ impl Encoder {
     /// Encodes `request` without I/O. Every attachment must be in memory; one held as a file
     /// path is [`ErrorKind::Attachment`], and needs `encode_files`.
     pub fn encode(&self, request: &Request) -> Result<Body, Error> {
-        self.build(request, &mut |source, encoding| match source {
-            Source::Bytes(data) => measure_bytes(data, encoding),
+        self.build(request, &mut |source, encoding, declared| match source {
+            Source::Bytes(data) => measure_bytes(data, encoding, declared),
             _ => Err(attachment(
                 "a file attachment needs Encoder::encode_files (feature `client`)",
             )),
@@ -105,19 +105,20 @@ impl Encoder {
     }
 
     /// Encodes `request`, first measuring the attachments held as file paths: an image's size,
-    /// and a text file's length once escaped, which takes one read of the file. The files are
-    /// read again while the body streams, and must not have changed by then.
+    /// and a text file's length once escaped, which takes one read of the file unless
+    /// [`TextFile::escaped_len`] declares it. The files are read again while the body streams,
+    /// and must not have changed by then.
     #[cfg(feature = "client")]
     pub async fn encode_files(&self, request: &Request) -> Result<Body, Error> {
         let mut measured = std::collections::VecDeque::new();
-        for (source, encoding) in attachments(request) {
+        for (source, encoding, declared) in attachments(request) {
             if let Source::Path(path) = source {
-                measured.push_back(files::measure(path, encoding, self.block).await?);
+                measured.push_back(files::measure(path, encoding, declared, self.block).await?);
             }
         }
 
-        self.build(request, &mut |source, encoding| match source {
-            Source::Bytes(data) => measure_bytes(data, encoding),
+        self.build(request, &mut |source, encoding, declared| match source {
+            Source::Bytes(data) => measure_bytes(data, encoding, declared),
             _ => measured
                 .pop_front()
                 .ok_or_else(|| attachment("an attachment was not measured")),
@@ -187,9 +188,13 @@ impl Encoder {
                         separate(&mut out);
                         out.raw(br#"{"role":"tool","tool_call_id":"#);
                         out.string(&result.call_id);
-                        out.raw(br#","content":"#);
-                        out.string(&result.content);
-                        out.raw(b"}");
+                        // Chat Completions has no field for a failure; it is told in the text.
+                        out.raw(br#","content":""#);
+                        if result.is_error {
+                            out.escaped(b"error: ");
+                        }
+                        out.escaped(result.content.as_bytes());
+                        out.raw(br#""}"#);
                     }
                 }
             }
@@ -209,8 +214,9 @@ impl Encoder {
     }
 }
 
-/// Measures one attachment: its size, and what it encodes to.
-type Measure<'a> = dyn FnMut(&Source, Encoding) -> Result<Measured, Error> + 'a;
+/// Measures one attachment: its size, and what it encodes to. The third argument is the escaped
+/// length a text file declares.
+type Measure<'a> = dyn FnMut(&Source, Encoding, Option<u64>) -> Result<Measured, Error> + 'a;
 
 #[derive(Debug, Clone, Copy)]
 struct Measured {
@@ -218,7 +224,11 @@ struct Measured {
     encoded: u64,
 }
 
-fn measure_bytes(data: &Bytes, encoding: Encoding) -> Result<Measured, Error> {
+fn measure_bytes(
+    data: &Bytes,
+    encoding: Encoding,
+    declared: Option<u64>,
+) -> Result<Measured, Error> {
     let size = data.len() as u64;
     let encoded = match encoding {
         Encoding::Base64 => base64_len(size),
@@ -230,7 +240,16 @@ fn measure_bytes(data: &Bytes, encoding: Encoding) -> Result<Measured, Error> {
         }
     };
 
+    // Measured anyway, since it is in memory; a declared length must agree.
+    if declared.is_some_and(|declared| declared != encoded) {
+        return Err(not_declared());
+    }
+
     Ok(Measured { size, encoded })
+}
+
+fn not_declared() -> Error {
+    attachment("a text file is not the escaped length it declares")
 }
 
 /// How long the base64 of `size` bytes is, padding included.
@@ -238,13 +257,19 @@ fn base64_len(size: u64) -> u64 {
     size.div_ceil(3) * 4
 }
 
-/// The attachments of a request, in the order the body uses them.
+/// The attachments of a request, in the order the body uses them, with the escaped length a
+/// text file declares.
 #[cfg(feature = "client")]
-fn attachments(request: &Request) -> impl Iterator<Item = (&Source, Encoding)> {
-    fn of(message: &Message, images: bool) -> impl Iterator<Item = (&Source, Encoding)> {
+fn attachments(request: &Request) -> impl Iterator<Item = (&Source, Encoding, Option<u64>)> {
+    fn of(
+        message: &Message,
+        images: bool,
+    ) -> impl Iterator<Item = (&Source, Encoding, Option<u64>)> {
         message.parts.iter().filter_map(move |part| match part {
-            Part::File(file) if !images => Some((&file.source, Encoding::JsonString)),
-            Part::Image(image) if images => Some((&image.source, Encoding::Base64)),
+            Part::File(file) if !images => {
+                Some((&file.source, Encoding::JsonString, file.escaped_len))
+            }
+            Part::Image(image) if images => Some((&image.source, Encoding::Base64, None)),
             _ => None,
         })
     }
@@ -294,7 +319,7 @@ fn user(message: &Message, out: &mut Segments, measure: &mut Measure<'_>) -> Res
             out.raw(br#"{"type":"image_url","image_url":{"url":"data:"#);
             out.escaped(media_type.as_bytes());
             out.raw(b";base64,");
-            out.data(&image.source, Encoding::Base64, measure)?;
+            out.data(&image.source, Encoding::Base64, None, measure)?;
             out.raw(br#""}}"#);
         }
         out.raw(b"]");
@@ -327,7 +352,12 @@ fn content_string(
             Text::File(file) => {
                 let name = file.name.replace('"', "&quot;");
                 out.escaped(format!("<file name=\"{name}\">\n").as_bytes());
-                out.data(&file.source, Encoding::JsonString, measure)?;
+                out.data(
+                    &file.source,
+                    Encoding::JsonString,
+                    file.escaped_len,
+                    measure,
+                )?;
                 out.escaped(b"\n</file>");
             }
         }
@@ -445,9 +475,10 @@ impl Segments {
         &mut self,
         source: &Source,
         encoding: Encoding,
+        declared: Option<u64>,
         measure: &mut Measure<'_>,
     ) -> Result<(), Error> {
-        let measured = measure(source, encoding)?;
+        let measured = measure(source, encoding, declared)?;
         self.flush();
         self.length += measured.encoded;
         self.parts.push(Segment::Data {
@@ -542,27 +573,37 @@ mod files {
 
     use tokio::{fs::File, io::AsyncReadExt};
 
-    use super::{Encoding, Measured, attachment, base64_len};
+    use super::{Encoding, Measured, attachment, base64_len, not_declared};
     use crate::{
         Error, ErrorKind,
         body::escape::{Utf8Check, escaped_len},
     };
 
-    /// Measures a file: an image by its size, a text file by reading it once.
+    /// Measures a file: an image by its size, a text file by reading it once, or by its size when
+    /// it declares its escaped length. The body stream checks a declared length as it reads.
     pub(super) async fn measure(
         path: &Path,
         encoding: Encoding,
+        declared: Option<u64>,
         block: usize,
     ) -> Result<Measured, Error> {
-        match encoding {
-            Encoding::Base64 => {
-                let size = tokio::fs::metadata(path).await.map_err(unreadable)?.len();
+        match (encoding, declared) {
+            (Encoding::Base64, _) => {
+                let size = size_of(path).await?;
                 Ok(Measured {
                     size,
                     encoded: base64_len(size),
                 })
             }
-            Encoding::JsonString => {
+            (Encoding::JsonString, Some(encoded)) => {
+                // Every byte escapes to 1, 2, or 6 bytes; a length outside that is wrong already.
+                let size = size_of(path).await?;
+                if encoded < size || encoded > size.saturating_mul(6) {
+                    return Err(not_declared());
+                }
+                Ok(Measured { size, encoded })
+            }
+            (Encoding::JsonString, None) => {
                 let mut file = File::open(path).await.map_err(unreadable)?;
                 let mut buffer = vec![0; block.max(8 * 1024)];
                 let mut check = Utf8Check::default();
@@ -584,6 +625,10 @@ mod files {
                 Ok(Measured { size, encoded })
             }
         }
+    }
+
+    async fn size_of(path: &Path) -> Result<u64, Error> {
+        Ok(tokio::fs::metadata(path).await.map_err(unreadable)?.len())
     }
 
     fn unreadable(source: std::io::Error) -> Error {

@@ -71,6 +71,7 @@ async fn a_custom_backend_carries_the_whole_exchange() {
     let client: Client<Canned> = Client::openai("http://models.internal:8080/v1")
         .allow_http()
         .api_key("secret-key")
+        .header("X-Title", "svir tests")
         .http(backend.clone())
         .build()
         .unwrap();
@@ -92,6 +93,7 @@ async fn a_custom_backend_carries_the_whole_exchange() {
     assert_eq!(url, "http://models.internal:8080/v1/chat/completions");
     assert!(headers.contains(&("authorization".to_owned(), "Bearer secret-key".to_owned())));
     assert!(headers.contains(&("content-type".to_owned(), "application/json".to_owned())));
+    assert!(headers.contains(&("x-title".to_owned(), "svir tests".to_owned())));
     let body: serde_json::Value = serde_json::from_slice(body).unwrap();
     assert_eq!(body["messages"][0]["content"], "ping");
     // Usage is asked for by default at the client.
@@ -99,7 +101,7 @@ async fn a_custom_backend_carries_the_whole_exchange() {
 }
 
 #[tokio::test]
-async fn the_credential_is_withheld_from_a_request_shown() {
+async fn credentials_are_withheld_from_a_request_shown() {
     /// A backend whose client gives a stream it cannot name can box it.
     struct Shown(Arc<Mutex<String>>);
 
@@ -115,6 +117,7 @@ async fn the_credential_is_withheld_from_a_request_shown() {
     let shown = Arc::new(Mutex::new(String::new()));
     let client = Client::openai("http://127.0.0.1:1")
         .api_key("secret-key")
+        .header("x-gateway-key", "gateway-secret")
         .http(Shown(shown.clone()))
         .build()
         .unwrap();
@@ -129,4 +132,9 @@ async fn the_credential_is_withheld_from_a_request_shown() {
         shown.contains("authorization") && !shown.contains("secret-key"),
         "{shown}"
     );
+    assert!(
+        shown.contains("x-gateway-key") && !shown.contains("gateway-secret"),
+        "{shown}"
+    );
+    assert!(shown.contains("application/json"), "{shown}");
 }

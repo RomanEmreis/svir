@@ -101,7 +101,7 @@ impl Backend for Hyper {
                 .map_err(|_| invalid("a header is not valid"))?;
             let mut value =
                 HeaderValue::from_str(value).map_err(|_| invalid("a header is not valid"))?;
-            value.set_sensitive(name == hyper::header::AUTHORIZATION);
+            value.set_sensitive(!super::is_plain(name.as_str()));
             builder = builder.header(name, value);
         }
         let body = match request.body {

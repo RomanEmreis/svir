@@ -43,7 +43,8 @@ and observed server behavior. How svir handles each fact is in [architecture.md]
   `"tool_calls":[{"id":...,"type":"function","function":{"name":...,"arguments":"<raw string>"}}]`
   next to `content`.
 - **Tool results** are `{"role":"tool","tool_call_id":"<id>","content":"<string>"}`. Structured
-  results are serialized into the string.
+  results are serialized into the string. There is no field that marks a failed call; the content
+  has to say so.
 - **Reasoning sent back**: when a server returned reasoning as `reasoning_content` or
   `reasoning`, the next request repeats it on that assistant message under the same key,
   unchanged.

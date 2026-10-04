@@ -18,7 +18,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-use super::{Encoding, Segment, attachment, encode};
+use super::{Encoding, Segment, attachment, encode, escape::Utf8Check};
 use crate::{Error, ErrorKind, Source};
 
 /// A [`Body`](super::Body) being read: its blocks, in order.
@@ -67,6 +67,9 @@ struct Reading {
     encoding: Encoding,
     /// How much of the block buffer is filled.
     filled: usize,
+    /// Text goes inside a JSON string, so it is checked to be UTF-8 as it is read: it may have
+    /// been measured by the caller, or not read at all before.
+    utf8: Utf8Check,
 }
 
 impl BodyStream {
@@ -145,6 +148,7 @@ impl Stream for BodyStream {
                             encoded_left,
                             encoding,
                             filled: 0,
+                            utf8: Utf8Check::default(),
                         });
                     }
                     Poll::Ready(Ok(Err(source))) => return fail(unreadable(source)),
@@ -199,9 +203,16 @@ impl Stream for BodyStream {
                         continue;
                     }
 
-                    let mut out = Vec::new();
-                    encode(&this.buffer[..reading.filled], reading.encoding, &mut out);
+                    let block = &this.buffer[..reading.filled];
                     let left = reading.left - read;
+                    if reading.encoding == Encoding::JsonString
+                        && (!reading.utf8.push(block) || (left == 0 && !reading.utf8.finish()))
+                    {
+                        return fail(attachment("a text file is not UTF-8"));
+                    }
+
+                    let mut out = Vec::new();
+                    encode(block, reading.encoding, &mut out);
                     let Some(encoded_left) = reading.encoded_left.checked_sub(out.len() as u64)
                     else {
                         return fail(changed());
@@ -269,5 +280,5 @@ fn unreadable(source: io::Error) -> Error {
 }
 
 fn changed() -> Error {
-    attachment("an attachment changed after the body was built")
+    attachment("an attachment changed after the body was built, or is not the length it declares")
 }

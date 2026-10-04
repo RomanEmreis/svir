@@ -1,0 +1,5 @@
+{
+  "description": "A header value with a line break is refused: it would end the header early and start another.",
+  "config": {"base_url": "http://127.0.0.1:1234/v1", "headers": {"x-title": "svir\r\nx-injected: 1"}},
+  "expect_config": "rejected"
+}

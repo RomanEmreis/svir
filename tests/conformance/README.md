@@ -10,8 +10,8 @@ on an open decision lists it in `open`.
 | Directory | Covers | Status |
 | --- | --- | --- |
 | `decoder/` | SSE framing, deltas, reasoning, tool calls, usage, limits, errors inside the stream, strict and lenient | 68 cases, run by `tests/conformance_decoder.rs` |
-| `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, admission | 22 cases, run by `tests/conformance_encoder.rs` |
-| `transport/` | Authentication, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 49 cases, run by `tests/conformance_transport.rs` |
+| `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, admission | 27 cases, run by `tests/conformance_encoder.rs` |
+| `transport/` | Authentication, extra headers, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 52 cases, run by `tests/conformance_transport.rs` |
 
 ## Decoder cases
 
@@ -128,7 +128,7 @@ Everything but `model` and `messages` is optional and present only when the requ
 | `{"file": key}` | user | A text file from `attachments` |
 | `{"reasoning": {"source": ..., "text": ...}}` | assistant | Reasoning received with this answer |
 | `{"tool_call": {"id": ..., "name": ..., "arguments": ...}}` | assistant | A call the model made; `arguments` is the raw string |
-| `{"tool_result": {"call_id": ..., "content": ...}}` | tool | The caller's result for a call, as a string |
+| `{"tool_result": {"call_id": ..., "content": ..., "is_error": true}}` | tool | The caller's result for a call, as a string; `is_error` marks a failed call and is present only when true |
 
 ## Encoder cases
 
@@ -136,7 +136,7 @@ Everything but `model` and `messages` is optional and present only when the requ
 | --- | --- |
 | `description` | What the case is about. Required. |
 | `request` | The request, as above. Required. |
-| `attachments` | `key -> attachment`: `media_type` (images) or `name` (files), content as `hex` or `text`, and optionally `declared_size`. |
+| `attachments` | `key -> attachment`: `media_type` (images) or `name` (files), content as `hex` or `text`, and optionally `declared_size` and, for a file, `escaped_len`: its length once escaped into a JSON string, as the caller declares it. |
 | `options` | `lean`: leave out the optional fields. `send_reasoning`: send reasoning back. `block_bytes`: block sizes to read attachments in (multiples of 3). `context_tokens`: check admission. |
 | `open` | As for decoder cases. |
 | `expect` | `{"body": <JSON>}`, `{"error": "attachment" or "context_overflow"}`, or `{"open": id}`. |
@@ -152,8 +152,8 @@ Running a case:
 3. For `body`: the number of bytes streamed equals the declared length; the bytes parse as JSON
    and equal the expected value (object key order does not matter); producing the body again
    gives identical bytes.
-4. For `attachment`: the body stream fails instead of completing with bytes that disagree with
-   the declared length.
+4. For `attachment`: building the body fails, or its stream fails instead of completing with
+   bytes that disagree with the declared length or are not UTF-8 where text is required.
 5. With `context_tokens`: the request is admitted exactly when `max_tokens` is above 0 and the
    declared length plus `max_tokens` is at most `context_tokens`. Otherwise the outcome is
    `context_overflow`, before any byte is sent.
@@ -165,7 +165,7 @@ A scripted HTTP server on loopback plays the model server.
 | Field | Meaning |
 | --- | --- |
 | `description` | What the case is about. Required. |
-| `config` | `base_url` (a string, or a list to run the case once per value), `api_key`, `timeout_ms`, `allow_http`. `{server}` stands for the scripted server's origin, such as `http://127.0.0.1:52811`. |
+| `config` | `base_url` (a string, or a list to run the case once per value), `api_key`, `headers` (`name -> value`, added to every request), `timeout_ms`, `allow_http`. `{server}` stands for the scripted server's origin, such as `http://127.0.0.1:52811`. |
 | `expect_config` | `"accepted"` or `"rejected"`: only construct the transport from `config`. No server, no calls. |
 | `server` | Replies, in order, one per HTTP request the server receives. |
 | `calls` | Calls made in order on one transport instance. |
@@ -208,8 +208,8 @@ For every case, whatever it lists:
 
 - every POST carries `content-type: application/json` and a `content-length` equal to the body,
   never `transfer-encoding: chunked`;
-- the API key never appears in the `Debug` or `Display` output of an error, an event, or the
-  configuration;
+- the API key, and the value of a header from `headers`, never appear in the `Debug` or
+  `Display` output of an error, an event, or the configuration;
 - the stream is decoded in strict mode;
 - the client's default of asking for usage is off, so a request carries an optional field only
   when the notation sets it.

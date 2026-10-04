@@ -1,0 +1,5 @@
+{
+  "description": "A header svir sets itself is refused: the credential goes through the API key, which is checked and withheld.",
+  "config": {"base_url": "http://127.0.0.1:1234/v1", "headers": {"Authorization": "Bearer secret-key"}},
+  "expect_config": "rejected"
+}

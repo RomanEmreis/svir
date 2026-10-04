@@ -1,0 +1,48 @@
+{
+  "description": "Headers the caller adds go with every request, the model listing too, beside the credential.",
+  "config": {
+    "base_url": "{server}/v1",
+    "api_key": "secret-key",
+    "headers": {"X-Title": "svir", "x-gateway-key": "gateway-secret"}
+  },
+  "server": [
+    {
+      "status": 200,
+      "headers": {"content-type": "text/event-stream"},
+      "body_file": "../decoder/final.sse"
+    },
+    {
+      "status": 200,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"object\": \"list\", \"data\": [{\"id\": \"a\"}]}"
+    }
+  ],
+  "calls": [
+    {
+      "expect": {
+        "completion": {"finish": "stop", "text": "42", "usage": {"input": 24, "output": 3, "total": 27}}
+      }
+    },
+    {"list_models": true, "expect": {"models": [{"id": "a", "name": null}]}}
+  ],
+  "expect_requests": [
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "headers": {
+        "authorization": "Bearer secret-key",
+        "x-title": "svir",
+        "x-gateway-key": "gateway-secret"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/v1/models",
+      "headers": {
+        "authorization": "Bearer secret-key",
+        "x-title": "svir",
+        "x-gateway-key": "gateway-secret"
+      }
+    }
+  ]
+}

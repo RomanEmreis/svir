@@ -20,6 +20,9 @@ fn client(config: &Value, base_url: &str) -> Result<Client, Error> {
     if let Some(key) = config["api_key"].as_str() {
         builder = builder.api_key(key);
     }
+    for (name, value) in config["headers"].as_object().into_iter().flatten() {
+        builder = builder.header(name, value.as_str().unwrap());
+    }
     if let Some(ms) = config["timeout_ms"].as_u64() {
         builder = builder.idle_timeout(Duration::from_millis(ms));
     }
@@ -189,7 +192,18 @@ async fn run(dir: &Path, case: &Value) -> Vec<String> {
         url => vec![url.as_str().unwrap()],
     };
 
-    let key = config["api_key"].as_str();
+    // What must never be shown: the API key, and the values of the caller's headers.
+    let secrets: Vec<&str> = config["api_key"]
+        .as_str()
+        .into_iter()
+        .chain(
+            config["headers"]
+                .as_object()
+                .into_iter()
+                .flatten()
+                .map(|(_, value)| value.as_str().unwrap()),
+        )
+        .collect();
     let mut diffs = Vec::new();
 
     if let Some(want) = case.get("expect_config") {
@@ -241,9 +255,9 @@ async fn run(dir: &Path, case: &Value) -> Vec<String> {
             &server.requests(),
         ));
 
-        if let Some(key) = key {
-            if shown.iter().any(|text| text.contains(key)) {
-                diffs.push("the API key shows in Debug or Display output".into());
+        for secret in &secrets {
+            if shown.iter().any(|text| text.contains(secret)) {
+                diffs.push(format!("{secret} shows in Debug or Display output"));
             }
         }
     }

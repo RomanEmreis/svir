@@ -79,7 +79,8 @@ builder methods, with public fields for reading.
   Which parts a role may carry is checked when the request is encoded. A `Completion` converts
   into an assistant message with its reasoning, text, and calls.
 - An **attachment** (`Image`, `TextFile`) has a `Source`: a path, read while the body streams
-  with its size measured when the body is built, or bytes in memory (serialized as base64).
+  with its size measured when the body is built, or bytes in memory (serialized as base64). A
+  text file may declare its escaped length, measured when the application stored it (D39).
 - **Effort** is the requested reasoning effort (`Off` to `XHigh`); each adapter maps it to its
   API (D13).
 - A **tool descriptor** is a name, a description, and a JSON Schema for the input.
@@ -113,13 +114,14 @@ attachment segments encoded on demand. Each segment's encoded length is known in
 
 - base64 of `n` bytes is `4 * ceil(n / 3)`;
 - a text file's JSON-escaped length is measured when the body is built, in one read of the file
-  that also checks it is UTF-8.
+  that also checks it is UTF-8, unless the caller declares it with `TextFile::escaped_len`,
+  measured once with `svir::body::escaped_len`; then only the file's size is looked up (D39).
 
 So the total length is exact before streaming starts, and the request is sent with
 `Content-Length` rather than chunked. A file that cannot be read, is no longer the size it was
-measured at, or no longer encodes to the measured length fails the stream with `Attachment` (P13)
-instead of sending a body that disagrees with its `Content-Length`. When the recorded size is
-used up, one more read confirms the file ends there.
+measured at, no longer encodes to the measured or declared length, or is a text file that is not
+UTF-8 fails the stream with `Attachment` (P13) instead of sending a body that disagrees with its
+`Content-Length`. When the recorded size is used up, one more read confirms the file ends there.
 
 Files are read in blocks whose size is a multiple of 3, so base64 blocks concatenate without
 inner padding. JSON escaping is byte-wise: only ASCII bytes ever need escaping, and every byte of
@@ -131,9 +133,9 @@ What goes into the body:
 - only what the request sets, plus `stream: true`; nothing is implied (P11);
 - messages laid out as in P12: plain string content unless there is an image, text and files
   joined into one text part in the order given, images after it as data URLs, tool results as
-  the caller's string, reasoning sent back only on request under the key it arrived with and
-  never when it came from `<think>` tags (D23), and empty-string content for a model message with
-  tool calls and no text (D24);
+  the caller's string with `error: ` before a failed one (D37), reasoning sent back only on
+  request under the key it arrived with and never when it came from `<think>` tags (D23), and
+  empty-string content for a model message with tool calls and no text (D24);
 - a part its role cannot carry, such as an image in a model message, is `Unsupported`, and an
   image without a media type is `Attachment`: nothing is dropped silently;
 - tools as `{"type": "function", "function": {"name", "description", "parameters"}}`.
@@ -275,6 +277,10 @@ proxy discovery; connecting takes at most 10 seconds; the server may send nothin
 minutes, before the headers and between pieces of the body. First-token and total limits are
 `Timeout` layers, so a long generation is not cut off by a request-wide default. Plain HTTP only
 on loopback unless `.allow_http()` says otherwise.
+
+Every request carries the headers svir writes (`content-type` and `accept` on a POST,
+`authorization` with an API key) and those the caller added with `.header(name, value)`, which
+cannot replace svir's own (D38).
 
 An error response's body is read for the server's message, up to 64 KiB, and waited for only
 300 ms unless the kind of the error depends on it (400, 413, 422).
@@ -463,9 +469,10 @@ to the model (`Request::tools(&toolbox)`) and answers one call at a time (`toolb
   the schema from the type of the handler's arguments (feature `schemars`);
   `.add_tool(tool, handler)` takes a `Tool` with its own schema. The handler's arguments are
   deserialized with serde, which is the validation: arguments that do not fit never reach it. A
-  failure becomes a tool result for the model, `error: ..`. `toolbox.call_all(&calls)` answers
-  several calls in order, and `call.parse::<T>()` parses raw arguments for callers without a
-  registry.
+  failure becomes a tool result for the model, `ToolResult::error(..)`, flagged so that each wire
+  API tells it as it can; Chat Completions sends `error: ..` (D37). `toolbox.call_all(&calls)`
+  answers several calls in order, and `call.parse::<T>()` parses raw arguments for callers
+  without a registry.
 - **MCP tools** come through neva, which implements `Toolbox` behind its `svir` feature. A function
   written once with `#[neva::tool]` can be served over MCP and handed to a model in the same
   process, and the tools of a remote MCP server can be handed to a model through `neva::Client`.
@@ -497,6 +504,8 @@ written) are opt-in.
   `Secret`, and sent only as a sensitive `Authorization` header. They never appear in `Debug`,
   `Display`, errors, or events. svir never reads environment variables or `.env` files
   implicitly (D17).
+- A header the caller adds may be a credential too, so its value is withheld the same way and
+  sent as a sensitive header. The headers svir writes itself cannot be set or replaced (D38).
 - Plain HTTP to a non-loopback host is refused unless the caller opts in (P4).
 - Tool descriptions and tool arguments are data from the model. svir executes nothing on its own:
   a `Toolbox` runs only handlers the caller registered, and `Tools` hands a handler only
