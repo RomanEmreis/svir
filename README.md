@@ -131,7 +131,7 @@ SVIR_MODEL=<model> cargo run --example stream
 - [Roadmap](docs/roadmap.md) -- order of work and what is left to write
 - [Conformance suite](tests/conformance/README.md) -- behavior vectors as data, independent of
   the API
-- [Agent Skill](skill/svir/README.md) -- svir for coding agents: the API, its traps, and code
+- [Agent Skill](https://romanemreis.github.io/svir-docs/docs/agent-skill) -- svir for coding agents: the API, its traps, and code
   that compiles
 
 ## Contributing
