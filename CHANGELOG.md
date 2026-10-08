@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   feature (D40, D41).
 * **`Completion::parse::<T>()`**: the answer's text read as JSON into `T`.
   Nothing else checks the answer against the schema (D41).
+* **`FinishReason::Refusal`**: the model refused to answer, and the
+  completion's text is its refusal, streamed as `Event::Text`. Chat
+  Completions sends it in `refusal` in place of `content`, with a `stop`
+  finish; OpenAI does, above all for a structured answer it will not give.
+  Content and a refusal in one answer, or a refusal with tool calls, are
+  `ErrorKind::Protocol` (D42).
 * **The `structured` example**: an answer to the schema of a type, parsed
   back into it.
 
@@ -34,6 +40,11 @@ parses the text. LM Studio takes `required` without keeping it, rejects a
 tool named in `tool_choice` and `ResponseFormat::Json`, and with reasoning
 on sends JSON to a schema as reasoning, with no text; `Effort::Off` with
 the format avoids that.
+
+### Changed
+
+* **A refusal is read.** Strict mode failed it with `Unsupported`, and
+  lenient mode dropped it and completed with no text (D42).
 
 ## 0.1.4
 

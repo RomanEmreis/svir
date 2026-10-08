@@ -238,7 +238,9 @@ impl Request {
     /// [`Completion::parse`].
     ///
     /// A server that does not take the format rejects the request; it is never left out, since
-    /// the answer would not be what was asked for.
+    /// the answer would not be what was asked for. A model may refuse to answer in it: the
+    /// finish is then [`FinishReason::Refusal`](crate::FinishReason::Refusal), and the text says
+    /// why.
     ///
     /// A server may hold a reasoning model's reasoning to the format too, and send the whole
     /// answer as reasoning and no text: LM Studio does with reasoning on. Ask such a server for

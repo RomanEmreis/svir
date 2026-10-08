@@ -135,8 +135,12 @@ was generated in that case, so retrying without them is safe.
 - `id` and `model` stay the same for the whole stream.
 - With `n: 1` there is exactly one choice, index `0`.
 - Delta keys: `role` (`"assistant"`, first chunk), `content`, `reasoning_content`, `reasoning`,
-  `tool_calls`. Keys can be present with `null`. Other keys (`audio`, `refusal`, deprecated
+  `refusal`, `tool_calls`. Keys can be present with `null`. Other keys (`audio`, deprecated
   `function_call`) are features outside this protocol subset.
+- `refusal` is the model's refusal to answer, in place of `content`: a string, in pieces as
+  `content` comes, with `content` null and the finish `stop`. OpenAI sends it above all when it
+  will not give an answer in the format asked for (2.6). Azure sends `"refusal": null` on its
+  first delta (3.7).
 - `finish_reason` appears once, on the last choice chunk: `stop`, `tool_calls`, `length`, or
   `content_filter`, when a content filter stopped the answer (3.7). Others exist in the wider
   schema, such as the deprecated `function_call`.

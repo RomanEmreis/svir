@@ -1,0 +1,14 @@
+{
+  "description": "A refusal the output limit cut off is still a refusal.",
+  "chunks": [
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":null,\"refusal\":\"\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"refusal\":\"I'm sorry, I\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\"}]}\n\n",
+    "data: [DONE]\n\n"
+  ],
+  "strides": [1, 3, 8192],
+  "expect": {
+    "strict": {"completion": {"finish": "refusal", "text": "I'm sorry, I"}},
+    "lenient": "same"
+  }
+}

@@ -9,7 +9,7 @@ on an open decision lists it in `open`.
 
 | Directory | Covers | Status |
 | --- | --- | --- |
-| `decoder/` | SSE framing, deltas, reasoning, tool calls, usage, limits, errors inside the stream, strict and lenient | 68 cases, run by `tests/conformance_decoder.rs` |
+| `decoder/` | SSE framing, deltas, reasoning, refusals, tool calls, usage, limits, errors inside the stream, strict and lenient | 75 cases, run by `tests/conformance_decoder.rs` |
 | `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, tool choice and response format, admission | 39 cases, run by `tests/conformance_encoder.rs` |
 | `transport/` | Authentication, extra headers, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 54 cases, run by `tests/conformance_transport.rs` |
 
@@ -62,7 +62,7 @@ A completion:
 
 | Field | Meaning |
 | --- | --- |
-| `finish` | `stop`, `tool_calls`, `length`, or `content_filter`. Required. |
+| `finish` | `stop`, `tool_calls`, `length`, `content_filter`, or `refusal`. Required. |
 | `text` | The answer. Default `""`. |
 | `reasoning` | `[{"source": ..., "text": ...}]`, one entry per carrier in order of first appearance, text concatenated. `source` is `reasoning_content`, `reasoning`, or `think`. Default `[]`. |
 | `calls` | `[{"id": ..., "name": ..., "arguments": ...}]` in index order; `arguments` is the raw string. Default `[]`. |

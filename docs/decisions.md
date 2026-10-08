@@ -632,6 +632,29 @@ everywhere else; implying `reasoning_effort: none` with a format would send what
 not set (P11). The text stays what the server sent (D31), and a caller of such a server asks for
 `Effort::Off` with the format.
 
+### D42. A refusal is its own finish reason, and its text is the answer's
+
+A model may refuse to answer, and say why. Chat Completions sends that in `refusal`, in pieces as
+`content` comes, with `content` null and the finish `stop`; OpenAI does, above all for a
+structured answer it will not give (D40). A refusal is the answer, not input outside the
+protocol: strict mode failed it as `Unsupported`, and lenient mode dropped it and completed with
+no text at all.
+
+It is `FinishReason::Refusal`, and the refusal's text is the completion's `text`, streamed as
+`Event::Text`, as the text before a `ContentFilter` finish is kept (D35). A chat UI shows it with
+no code of its own, and a caller that asked for a format learns from the finish that the text
+does not have it; `parse` fails on it. Anthropic Messages ends a refused answer with a stop
+reason of `refusal`, and the Responses API has a refusal part of its own, so the finish is
+neutral (O6).
+
+- A refusal makes the finish `Refusal` whether the model stopped or the output limit cut it off.
+  A content filter's block is still `ContentFilter`, the stronger statement (D35).
+- Content and a refusal in one answer, in either order, are `Protocol` in both modes: the server
+  contradicts itself about what the answer is (P8). So is a refusal with tool calls.
+- An empty or null `refusal` is no refusal: Azure sends `"refusal": null` on every first delta.
+
+Added to the next request, the refusal is the model's text and goes back as `content`; the
+`refusal` field of an assistant message is not written.
 
 ### P1. Edition 2024; MSRV 1.85
 

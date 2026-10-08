@@ -93,8 +93,8 @@ builder methods, with public fields for reading.
   them. svir reports only what the server said; estimates are the caller's.
 - **Timing** is when the first and last visible tokens arrived, from the start of the response;
   `Completion::tokens_per_second` applies the rule of P7.
-- **Finish reason** is `stop`, `tool_calls`, `length`, or `content_filter` (D35). Anything else
-  is an error in both modes.
+- **Finish reason** is `stop`, `tool_calls`, `length`, `content_filter` (D35), or `refusal`,
+  when the model refused and the text is its refusal (D42). Any other is an error in both modes.
 - **Reasoning** carries its source (`reasoning_content`, `reasoning`, or `think`), which is all
   Chat Completions needs to send it back. Opaque continuation data, such as signed thinking
   blocks, arrives with the first wire API that needs it (O6).
@@ -214,7 +214,7 @@ or a tool call wrong (P8).
 | Unknown SSE field (not `data`, `id`, `retry`, `event: message`, `event: error`, or a comment) | `Unsupported` | Ignored |
 | `data` that is not valid JSON | `Protocol` | Ignored |
 | Invalid UTF-8 in an event | `Protocol` | Replaced lossily |
-| Unknown key in a delta (for example `audio`, `refusal`) | `Unsupported` | Ignored |
+| Unknown key in a delta (for example `audio`) | `Unsupported` | Ignored |
 | A chunk with an empty `choices` array before the finish reason, other than a prompt report | `Protocol` | Ignored |
 | More than one choice, or a choice index other than 0 | `Unsupported` | First choice read |
 | `id` or `model` changes mid-stream | `Protocol` | Ignored |
@@ -230,6 +230,7 @@ Enforced the same way in both modes (P8):
 | End of stream, or `[DONE]`, before a finish reason; end of stream before `[DONE]` | `TruncatedStream` |
 | Tool calls with duplicate or changing IDs, missing IDs or names, or non-contiguous indices | `Protocol` |
 | `tool_calls` finish without calls, or calls with a `stop` or `content_filter` finish | `Protocol` |
+| Content and a refusal in one answer, or a refusal with tool calls (D42) | `Protocol` |
 | A finish reason other than `stop`, `tool_calls`, `length`, and `content_filter` (D35) | `Unsupported` |
 | Content after the finish reason (D35) | `Unsupported` |
 | An annotation from an asynchronous content filter with a finish reason other than `content_filter` (D35) | `Unsupported` |
@@ -242,8 +243,9 @@ A prompt report, a chunk with an empty `choices` array and `prompt_filter_result
 both modes, its empty `id` and `model` included. So is an annotation from an asynchronous content
 filter, a choice with `content_filter_offsets` and no delta, before the finish reason or after
 it, unless it blocks: a verdict marked `filtered: true`, or a `content_filter` finish, makes the
-answer's finish `ContentFilter`, even after the model's own (D35). A call ID repeated on later
-pieces of the same call is consistent; one that changes is not (P10).
+answer's finish `ContentFilter`, even after the model's own (D35). A refusal, sent in
+`refusal` in place of `content`, is the answer's text, and makes the finish `Refusal` (D42). A
+call ID repeated on later pieces of the same call is consistent; one that changes is not (P10).
 
 Limits and their current defaults: 64 MiB of wire bytes per attempt (D32), 256 KiB per SSE
 event, and 64 tool calls per response.

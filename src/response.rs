@@ -106,6 +106,9 @@ pub enum FinishReason {
     /// That text may hold what the filter flagged: an asynchronous filter vets it only after it
     /// was streamed, even after the model finished. A caller that shows it withdraws it.
     ContentFilter,
+    /// The model refused to answer, and the text is its refusal, for the caller to show. It
+    /// does not have the format the request asked for.
+    Refusal,
 }
 
 /// Token counts, as the server reported them.
@@ -204,8 +207,9 @@ impl Completion {
     /// [`Request::response_format`](crate::Request::response_format).
     ///
     /// Nothing else checks the answer against the format: `T` is what it is checked against. An
-    /// answer the output limit cut off (`FinishReason::Length`) does not parse, and neither does
-    /// one a server sent as reasoning with no text, which is read from the text alone.
+    /// answer the output limit cut off (`FinishReason::Length`) does not parse, nor a refusal
+    /// (`FinishReason::Refusal`), nor an answer a server sent as reasoning with no text, which is
+    /// read from the text alone.
     pub fn parse<T: DeserializeOwned>(&self) -> serde_json::Result<T> {
         serde_json::from_str(&self.text)
     }
