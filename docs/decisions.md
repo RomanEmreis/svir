@@ -804,6 +804,17 @@ stands in for its length in tokens, which it never underestimates (but see O5).
   layout per wire API (Chat Completions `input_audio` and `file` parts; Anthropic's `document`
   and the Responses API's `input_file`, with O6), what servers accept, seen live, and admission
   for large media (O5).
+- **O19. A structured answer in one call.** `client.complete(&request).await?.parse()?` takes two
+  steps and two error types, and nothing ties the type given to `parse` to the schema in the
+  request. A helper that sets the format from a type and reads the answer back into it would
+  keep the two from disagreeing; that is its worth, not saving `.parse()`. Not added with D40
+  and D41, for what it has to settle first: an error kind for an answer that is not a whole `T`
+  (cut off, filtered, refused, or JSON the type does not fit), which is a public contract (D12,
+  D22) and fits none of the kinds there are; how a refusal's text reaches the caller once it is
+  an error rather than a finish (D42), since `server_message()` holds the server's words;
+  returning the `Completion` with the value, so usage and the next turn are not lost (D13); a
+  request that already sets another format; and where it lives, since deriving the schema needs
+  `schemars` (D14).
 
 Resolved: O1 (API names and DX) by D13-D18, O2 (`<think>` splitting) by D23, O4 (server error
 messages) by D19, O3 (compatibility retry versus context overflow) by D26, O8 (tool arguments)
