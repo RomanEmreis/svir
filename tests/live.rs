@@ -120,16 +120,19 @@ struct Locker {
     number: u32,
 }
 
+fn open_locker() -> Tool {
+    Tool::new("open_locker", "Open a locker and say what is in it.").schema(json!({
+        "type": "object",
+        "properties": {"number": {"type": "integer"}},
+        "required": ["number"]
+    }))
+}
+
 #[tokio::test]
 #[ignore = "needs a model server"]
 async fn tool_results_reach_the_answer() {
     let client = client();
-    let open = Tool::new("open_locker", "Open a locker and say what is in it.").schema(json!({
-        "type": "object",
-        "properties": {"number": {"type": "integer"}},
-        "required": ["number"]
-    }));
-    let tools = Tools::new().add_tool(open, |args: Locker| async move {
+    let tools = Tools::new().add_tool(open_locker(), |args: Locker| async move {
         match args.number {
             7 => Ok("a brass key stamped 4417".to_owned()),
             other => Err(format!("locker {other} is empty")),
@@ -159,6 +162,75 @@ async fn tool_results_reach_the_answer() {
     assert!(called >= 1, "the model answered without the tool");
     assert!(said(&answer, "4417"), "{:?}", answer.text);
     assert!(tokens > 0);
+}
+
+#[tokio::test]
+#[ignore = "needs a model server"]
+async fn a_tool_required_by_name_is_called_or_refused() {
+    let request = request()
+        .tool(open_locker())
+        .tool_choice(ToolChoice::tool("open_locker"))
+        .user("Say hello.");
+
+    // Never dropped (D40): the server keeps to the choice, or rejects it, as LM Studio does.
+    match client().complete(request).await {
+        Ok(answer) => {
+            assert_eq!(answer.finish, FinishReason::ToolCalls);
+            assert_eq!(answer.calls[0].name, "open_locker", "{:?}", answer.calls);
+        }
+        Err(error) => {
+            assert_eq!(error.kind(), ErrorKind::Unsupported, "{error:?}");
+            assert_eq!(error.status(), Some(400));
+        }
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs a model server"]
+async fn a_forbidden_tool_is_not_called() {
+    let request = request()
+        .tool(open_locker())
+        .tool_choice(ToolChoice::None)
+        .user("Open locker 7.");
+    let answer = client().complete(request).await.unwrap();
+
+    assert_eq!(answer.finish, FinishReason::Stop);
+    assert!(answer.calls.is_empty(), "{:?}", answer.calls);
+}
+
+#[tokio::test]
+#[ignore = "needs a model server"]
+async fn an_answer_in_a_schema_parses() {
+    #[derive(Deserialize)]
+    struct Contents {
+        locker: u32,
+        item: String,
+    }
+
+    let schema = Schema::new(
+        "contents",
+        json!({
+            "type": "object",
+            "properties": {"locker": {"type": "integer"}, "item": {"type": "string"}},
+            "required": ["locker", "item"],
+            "additionalProperties": false
+        }),
+    );
+    // With reasoning on, LM Studio holds the reasoning to the schema too, and sends the JSON as
+    // reasoning with no text (wire-protocol 2.6).
+    let request = request()
+        .reasoning(Effort::Off)
+        .response_format(schema.strict(true))
+        .user("Locker 7 holds a brass key. Report what is in which locker.");
+    let answer = client().complete(request).await.unwrap();
+
+    let contents: Contents = answer.parse().unwrap();
+    assert_eq!(contents.locker, 7);
+    assert!(
+        contents.item.to_lowercase().contains("key"),
+        "{:?}",
+        contents.item
+    );
 }
 
 #[tokio::test]

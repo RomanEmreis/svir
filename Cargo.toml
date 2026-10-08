@@ -79,6 +79,10 @@ name = "tools_typed"
 required-features = ["client", "schemars"]
 
 [[example]]
+name = "structured"
+required-features = ["client", "schemars"]
+
+[[example]]
 name = "toolbox"
 required-features = ["client"]
 

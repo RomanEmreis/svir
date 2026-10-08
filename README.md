@@ -61,8 +61,9 @@ request.
 The first protocol is OpenAI-compatible Chat Completions streaming, as served by LM Studio,
 mlx-lm, llama.cpp, vLLM, and hosted endpoints.
 
-- **Types**: messages with text, image, and file parts; tool descriptors, calls, and results;
-  usage; finish reasons; a typed error.
+- **Types**: messages with text, image, and file parts; tool descriptors, calls, and results; a
+  tool call required or forbidden; an answer as JSON, or JSON to a schema; usage; finish reasons;
+  a typed error.
 - **Encoder**: the request body streamed from disk, attachments included, with an exact
   `Content-Length` known before the first byte. That length is also the context estimate.
 - **Decoder**: SSE framing, tool calls assembled across deltas, reasoning from
@@ -71,7 +72,8 @@ mlx-lm, llama.cpp, vLLM, and hosted endpoints.
 - **Transport**: HTTP with optional Bearer authentication and headers of the caller's own,
   typed status mapping, timeouts, and cancellation by drop.
 - **Compatibility**: a server that rejects optional fields such as `reasoning_effort` is detected
-  once and remembered.
+  once and remembered. What the answer must meet, a tool choice or a response format, is never
+  dropped.
 
 On top of that core, opt-in:
 
@@ -102,6 +104,7 @@ SVIR_MODEL=<model> cargo run --example stream
 | `attachments` | An image read from disk and a text file in one message |
 | `tools` | A `Tools` registry and the loop that feeds results back |
 | `tools_typed` | Tool schemas derived from types (feature `schemars`), calls shown as they stream |
+| `structured` | An answer as JSON matching the schema of a type (feature `schemars`), parsed back into it |
 | `toolbox` | A tool set of one's own, with shared state |
 | `layers` | `Retry`, `Timeout`, a closure, and a layer of one's own |
 | `relay` | A proxy: the server's bytes passed on unchanged and decoded on the way past |

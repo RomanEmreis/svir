@@ -1,0 +1,20 @@
+{
+  "description": "A required tool the request does not offer cannot be called: an error before anything is sent.",
+  "request": {
+    "model": "m",
+    "tools": [
+      {
+        "name": "lookup",
+        "description": "Look up a value.",
+        "input_schema": {
+          "type": "object",
+          "properties": {"value": {"type": "integer"}},
+          "required": ["value"]
+        }
+      }
+    ],
+    "tool_choice": {"tool": "search"},
+    "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+  },
+  "expect": {"error": "unsupported"}
+}

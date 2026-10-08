@@ -1,0 +1,16 @@
+{
+  "description": "JSON output of any shape is a json_object response format.",
+  "request": {
+    "model": "m",
+    "response_format": "json",
+    "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "response_format": {"type": "json_object"},
+      "messages": [{"role": "user", "content": "hi"}]
+    }
+  }
+}

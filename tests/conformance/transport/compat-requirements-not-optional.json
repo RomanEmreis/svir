@@ -1,0 +1,35 @@
+{
+  "description": "tool_choice and response_format are not optional fields: a 400 to a request with them and nothing optional is reported at once, without a retry.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 400,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"error\":\"'response_format.type' must be 'json_schema'\"}"
+    }
+  ],
+  "calls": [
+    {
+      "request": {
+        "model": "m",
+        "tools": [{"name": "lookup", "description": "Look up a value.", "input_schema": {"type": "object"}}],
+        "tool_choice": "required",
+        "response_format": "json",
+        "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+      },
+      "expect": {
+        "error": "unsupported",
+        "retryable": false,
+        "status": 400,
+        "message": "'response_format.type' must be 'json_schema'"
+      }
+    }
+  ],
+  "expect_requests": [
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "body_includes": {"tool_choice": "required", "response_format": {"type": "json_object"}}
+    }
+  ]
+}

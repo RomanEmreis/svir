@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::ToolCall;
 
@@ -200,6 +200,16 @@ impl Completion {
         }
     }
 
+    /// Parses the answer's text as JSON into `T`, as asked for with
+    /// [`Request::response_format`](crate::Request::response_format).
+    ///
+    /// Nothing else checks the answer against the format: `T` is what it is checked against. An
+    /// answer the output limit cut off (`FinishReason::Length`) does not parse, and neither does
+    /// one a server sent as reasoning with no text, which is read from the text alone.
+    pub fn parse<T: DeserializeOwned>(&self) -> serde_json::Result<T> {
+        serde_json::from_str(&self.text)
+    }
+
     /// Output tokens per second, from the first visible token to the last.
     ///
     /// `None` without usage or timing, with one output token or fewer, or over a window shorter
@@ -252,6 +262,23 @@ mod tests {
     fn the_rate_runs_from_the_first_visible_token_to_the_last() {
         let rate = timed(100, 2_000, 4_000).tokens_per_second().unwrap();
         assert!((rate - 50.0).abs() < 1e-9, "{rate}");
+    }
+
+    #[test]
+    fn the_answer_parses_on_demand() {
+        #[derive(Debug, PartialEq, Deserialize)]
+        struct Weather {
+            celsius: f64,
+        }
+
+        let mut done = Completion::new(FinishReason::Stop);
+        // A server that separates reasoning may start the answer with line breaks (D31).
+        done.text = "\n\n{\"celsius\": 12.5}".into();
+        assert_eq!(done.parse::<Weather>().unwrap(), Weather { celsius: 12.5 });
+
+        done.finish = FinishReason::Length;
+        done.text = "{\"cel".into();
+        assert!(done.parse::<Weather>().is_err());
     }
 
     #[test]

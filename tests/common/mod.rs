@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use svir::{
-    Effort, Image, Message, Reasoning, Request, Role, Source, TextFile, Tool, ToolCall, ToolResult,
+    Effort, Image, Message, Reasoning, Request, ResponseFormat, Role, Source, TextFile, Tool,
+    ToolCall, ToolResult,
 };
 
 pub mod server;
@@ -100,6 +101,14 @@ pub fn request(
             tool["description"].as_str().unwrap(),
         );
         request = request.tool(Tool::new(name, description).schema(tool["input_schema"].clone()));
+    }
+    // The notation is the serde form of these; `tests/serde_contract.rs` pins it.
+    if let Some(choice) = notation.get("tool_choice") {
+        request = request.tool_choice(serde_json::from_value(choice.clone()).unwrap());
+    }
+    if let Some(format) = notation.get("response_format") {
+        request = request
+            .response_format(serde_json::from_value::<ResponseFormat>(format.clone()).unwrap());
     }
 
     for message in notation["messages"].as_array().unwrap() {

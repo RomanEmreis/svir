@@ -1,0 +1,41 @@
+{
+  "description": "A call of one named tool required, as a function choice.",
+  "request": {
+    "model": "m",
+    "tools": [
+      {
+        "name": "lookup",
+        "description": "Look up a value.",
+        "input_schema": {
+          "type": "object",
+          "properties": {"value": {"type": "integer"}},
+          "required": ["value"]
+        }
+      }
+    ],
+    "tool_choice": {"tool": "lookup"},
+    "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "lookup",
+            "description": "Look up a value.",
+            "parameters": {
+              "type": "object",
+              "properties": {"value": {"type": "integer"}},
+              "required": ["value"]
+            }
+          }
+        }
+      ],
+      "tool_choice": {"type": "function", "function": {"name": "lookup"}},
+      "messages": [{"role": "user", "content": "hi"}]
+    }
+  }
+}

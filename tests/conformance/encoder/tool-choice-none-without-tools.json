@@ -1,0 +1,11 @@
+{
+  "description": "Forbidding tools to a request that offers none forbids nothing, and a tool_choice without tools is rejected by some servers: nothing is sent.",
+  "request": {
+    "model": "m",
+    "tool_choice": "none",
+    "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+  },
+  "expect": {
+    "body": {"model": "m", "stream": true, "messages": [{"role": "user", "content": "hi"}]}
+  }
+}

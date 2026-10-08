@@ -74,6 +74,10 @@ builder methods, with public fields for reading.
 
 - A **request** has a model, an optional system prompt, messages, tools, and parameters. The
   system prompt is a field, not a message: each adapter puts it where its API expects it.
+- A **tool choice** lets the model decide (the default), forbids a tool call, or requires one, of
+  any tool offered or of one by name. A **response format** asks for text (the default), JSON,
+  or JSON matching a `Schema`: a name, a JSON Schema, and whether the server must keep to it
+  strictly. Both are what the answer must meet, and are never dropped (D40).
 - A **message** has a role (`User`, `Assistant`, `Tool`; no system role) and parts in order:
   text, image, text file, reasoning and tool calls (assistant), and a tool result (tool role).
   Which parts a role may carry is checked when the request is encoded. A `Completion` converts
@@ -138,7 +142,12 @@ What goes into the body:
   empty-string content for a model message with tool calls and no text (D24);
 - a part its role cannot carry, such as an image in a model message, is `Unsupported`, and an
   image without a media type is `Attachment`: nothing is dropped silently;
-- tools as `{"type": "function", "function": {"name", "description", "parameters"}}`.
+- tools as `{"type": "function", "function": {"name", "description", "parameters"}}`;
+- a tool choice as `"none"`, `"required"`, or `{"type": "function", "function": {"name"}}`, and
+  a response format as `{"type": "json_object"}` or
+  `{"type": "json_schema", "json_schema": {"name", "schema", "strict"}}`, with `strict` only
+  when it is on. The defaults are not sent, nor is `none` without tools. A call required of a
+  request that offers no tools, or of a tool it does not offer, is `Unsupported` (D40).
 
 Admission (P14): with `encoder.context_tokens(n)`, the length plus `max_tokens` must fit in the
 context size and `max_tokens` must not be 0, or the request fails with `ContextOverflow` before a
@@ -182,6 +191,9 @@ struct Completion {
   emitted after a finish reason and `[DONE]` (D5). A stream that ends before that is a
   `TruncatedStream` error, never a partial completion.
 - `Completed` is the last item. Bytes after `[DONE]` are not read (P9).
+- An answer asked for as JSON arrives as text like any other. `Completion::parse::<T>()` reads it
+  into a type; nothing checks it against the schema, nor the calls against the tool choice
+  (D40, D41).
 
 The outcome does not depend on how the bytes were chunked (P9). Events arrive in wire order, and
 an error is delivered after every event decoded before it, even when both came in the same chunk.
@@ -310,6 +322,11 @@ cheap-to-clone handle shared by every request to that server. A 400/422 means no
 generated, so this retry is safe. A 400 or 422 that is a context overflow, or a prompt the
 content filter blocked, is not about those fields and is reported without the retry (D26, D36).
 
+A tool choice and a response format are not optional in this sense: the answer must meet them.
+The retry keeps them, a server learned to be strict still gets them, and a request that carries
+them and no optional field is not retried. A server that does not take them fails the request
+(D40).
+
 ### 4.8 Errors
 
 Every failure is a typed kind with a `retryable` flag and an optional retry delay:
@@ -411,6 +428,23 @@ loop {
 
 `reply` in the `wrap` closure arrives with the response headers, not the whole answer; a layer
 that needs the whole answer wraps the returned stream (D15).
+
+**Structured output.** An answer as JSON to the schema of a type, read back into it; nothing
+checks it on the way in but the parse (D40, D41). `.tool_choice(ToolChoice::tool("lookup"))`
+requires a call in the same way:
+
+```rust
+#[derive(Deserialize, JsonSchema)]
+struct River {
+    name: String,
+    length_km: u32,
+}
+
+let request = Request::new("qwen3-27b")
+    .response_format(Schema::of::<River>())
+    .user("Describe the river that joins Lake Onega to Lake Ladoga.");
+let river: River = llm.complete(&request).await?.parse()?;
+```
 
 **A proxy or a custom transport.** Relay the server's bytes unchanged and decode them on the way
 past (D20):

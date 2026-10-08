@@ -1,8 +1,9 @@
 //! A request: the model, the conversation, the tools, and how to answer.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-use crate::{Completion, Message, Tool, ToolResult, Toolbox};
+use crate::{Completion, Message, Tool, ToolChoice, ToolResult, Toolbox};
 
 /// How much the model should reason before answering.
 ///
@@ -25,6 +26,92 @@ pub enum Effort {
     XHigh,
 }
 
+/// The shape of the answer's text.
+///
+/// Each wire API maps it explicitly: Chat Completions sends `response_format`. `Text` is every
+/// server's default and is not sent. The answer is not checked against it when it arrives;
+/// [`Completion::parse`] reads it into a type.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ResponseFormat {
+    /// Text of any shape. The default.
+    #[default]
+    Text,
+    /// A JSON object of any shape. Most APIs also want the prompt to ask for JSON.
+    Json,
+    /// JSON that matches a schema.
+    Schema(Schema),
+}
+
+impl ResponseFormat {
+    pub(crate) fn is_text(&self) -> bool {
+        matches!(self, Self::Text)
+    }
+}
+
+impl From<Schema> for ResponseFormat {
+    fn from(schema: Schema) -> Self {
+        Self::Schema(schema)
+    }
+}
+
+/// A JSON Schema for the answer, with a name for it.
+///
+/// ```
+/// use serde_json::json;
+/// use svir::{Request, Schema};
+///
+/// let weather = json!({
+///     "type": "object",
+///     "properties": {"city": {"type": "string"}, "celsius": {"type": "number"}},
+///     "required": ["city", "celsius"],
+///     "additionalProperties": false
+/// });
+/// let request = Request::new("m")
+///     .response_format(Schema::new("weather", weather).strict(true))
+///     .user("The weather in Oslo, please.");
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Schema {
+    /// The schema's name. Some APIs require one, of ASCII letters, digits, `_`, and `-`.
+    pub name: String,
+    /// The JSON Schema the answer must match.
+    pub schema: Value,
+    /// Whether the server must keep to the schema exactly. Off by default, and sent only when on.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub strict: bool,
+}
+
+impl Schema {
+    /// The schema `schema`, named `name`.
+    pub fn new(name: impl Into<String>, schema: Value) -> Self {
+        Self {
+            name: name.into(),
+            schema,
+            strict: false,
+        }
+    }
+
+    /// The schema of `T`, named after it, with its doc comments as descriptions.
+    #[cfg(feature = "schemars")]
+    pub fn of<T: schemars::JsonSchema>() -> Self {
+        Self::new(T::schema_name(), crate::tool::schema_of::<T>())
+    }
+
+    /// Asks the server to keep to the schema exactly, or not (the default).
+    ///
+    /// OpenAI and Azure OpenAI guarantee an answer that matches only in strict mode, and accept
+    /// a schema for it only when every object lists all of its properties as required and sets
+    /// `additionalProperties` to `false`; a schema derived from a type may need attributes for
+    /// that. Local servers keep to the schema by constrained sampling, strict or not.
+    pub fn strict(mut self, strict: bool) -> Self {
+        self.strict = strict;
+        self
+    }
+}
+
 /// A request to a model.
 ///
 /// Built with [`Request::new`] and the methods below; the fields are public for reading, for
@@ -43,6 +130,12 @@ pub struct Request {
     /// Tools the model may call.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<Tool>,
+    /// Whether the model may or must call a tool. The default lets it decide.
+    #[serde(default, skip_serializing_if = "ToolChoice::is_auto")]
+    pub tool_choice: ToolChoice,
+    /// The shape of the answer. The default is text.
+    #[serde(default, skip_serializing_if = "ResponseFormat::is_text")]
+    pub response_format: ResponseFormat,
     /// The most tokens to generate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u64>,
@@ -68,6 +161,8 @@ impl Request {
             system: None,
             messages: Vec::new(),
             tools: Vec::new(),
+            tool_choice: ToolChoice::Auto,
+            response_format: ResponseFormat::Text,
             max_tokens: None,
             temperature: None,
             reasoning: None,
@@ -120,6 +215,36 @@ impl Request {
     /// descriptions; answering the model's calls stays with the tool set.
     pub fn tools(mut self, toolbox: &(impl Toolbox + ?Sized)) -> Self {
         self.tools.extend(toolbox.tools());
+        self
+    }
+
+    /// Lets the model call a tool, forbids it, or requires a call, of any tool or of one by
+    /// name.
+    ///
+    /// What cannot be met fails when the request is encoded, with
+    /// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported): a call required of a request
+    /// that offers no tools, or of a tool it does not offer. A server that does not take the
+    /// choice rejects the request; it is never left out, since the answer would not be what was
+    /// asked for.
+    ///
+    /// The answer is not checked against the choice: a server may take it and not keep it, as
+    /// LM Studio does with `Required`. [`Completion::calls`] says what the model called.
+    pub fn tool_choice(mut self, choice: ToolChoice) -> Self {
+        self.tool_choice = choice;
+        self
+    }
+
+    /// Asks for the answer as JSON, or as JSON that matches a [`Schema`]. Read it with
+    /// [`Completion::parse`].
+    ///
+    /// A server that does not take the format rejects the request; it is never left out, since
+    /// the answer would not be what was asked for.
+    ///
+    /// A server may hold a reasoning model's reasoning to the format too, and send the whole
+    /// answer as reasoning and no text: LM Studio does with reasoning on. Ask such a server for
+    /// [`Effort::Off`] with the format.
+    pub fn response_format(mut self, format: impl Into<ResponseFormat>) -> Self {
+        self.response_format = format.into();
         self
     }
 
@@ -194,6 +319,8 @@ mod tests {
         assert_eq!(request.temperature, None);
         assert_eq!(request.reasoning, None);
         assert_eq!(request.include_usage, None);
+        assert_eq!(request.tool_choice, ToolChoice::Auto);
+        assert_eq!(request.response_format, ResponseFormat::Text);
         assert!(!request.send_reasoning);
 
         let request = request
@@ -201,11 +328,52 @@ mod tests {
             .temperature(0.5)
             .reasoning(Effort::Low)
             .include_usage(false)
+            .tool_choice(ToolChoice::tool("lookup"))
+            .response_format(ResponseFormat::Json)
             .send_reasoning(true);
         assert_eq!(request.max_tokens, Some(16));
         assert_eq!(request.temperature, Some(0.5));
         assert_eq!(request.reasoning, Some(Effort::Low));
         assert_eq!(request.include_usage, Some(false));
+        assert_eq!(request.tool_choice, ToolChoice::Tool("lookup".into()));
+        assert_eq!(request.response_format, ResponseFormat::Json);
         assert!(request.send_reasoning);
+    }
+
+    #[test]
+    fn a_schema_is_a_response_format_and_strict_only_when_asked() {
+        let schema = Schema::new("weather", serde_json::json!({"type": "object"}));
+        assert!(!schema.strict);
+
+        let request = Request::new("m").response_format(schema.strict(true));
+        let ResponseFormat::Schema(sent) = request.response_format else {
+            panic!("not a schema");
+        };
+        assert_eq!(sent.name, "weather");
+        assert!(sent.strict);
+    }
+
+    #[cfg(feature = "schemars")]
+    #[test]
+    fn a_schema_of_a_type_is_named_after_it() {
+        /// The weather in a city.
+        #[derive(schemars::JsonSchema)]
+        #[allow(dead_code)]
+        struct Weather {
+            /// The city.
+            city: String,
+            celsius: f64,
+        }
+
+        let schema = Schema::of::<Weather>();
+        assert_eq!(schema.name, "Weather");
+        assert_eq!(schema.schema["type"], "object");
+        assert_eq!(schema.schema["description"], "The weather in a city.");
+        assert_eq!(
+            schema.schema["properties"]["city"]["description"],
+            "The city."
+        );
+        assert_eq!(schema.schema.get("$schema"), None);
+        assert_eq!(schema.schema.get("title"), None);
     }
 }

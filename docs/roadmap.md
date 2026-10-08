@@ -13,11 +13,11 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
    cases pass in `tests/conformance_decoder.rs`.
 4. **Encoder.** Done: `svir::openai::chat::Encoder` and `Body`, with the exact length,
    attachments from memory and from disk, tools, tool calls and results, reasoning sent back, and
-   admission. All 27 encoder cases pass in `tests/conformance_encoder.rs`, at every block size
+   admission. All 39 encoder cases pass in `tests/conformance_encoder.rs`, at every block size
    and from memory.
 5. **Transport and compatibility.** Done: `Client` and its builder, `EventStream`, the HTTP seam
    with the hyper backend, authentication, status mapping, timeouts, cancellation, optional-field
-   learning, and model listing. All 52 transport cases pass in `tests/conformance_transport.rs`;
+   learning, and model listing. All 54 transport cases pass in `tests/conformance_transport.rs`;
    the `Retry-After` date case (O7) is pending.
 6. **Layers.** Done: `svir::layer::{Layer, Next}`, `.layer(..)` and `.wrap(..)`, `Retry`,
    `Timeout`, and `Trace`, with the stream methods they use (D28). Tested against a scripted
@@ -41,10 +41,10 @@ written for all three components:
 
 - `decoder/`: 68 cases. Framing, reasoning and `<think>` splitting, tool-call assembly, usage,
   limits, errors inside the stream, and strict and lenient outcomes for each.
-- `encoder/`: 27 cases. Content layout, attachments at every size around the block size, exact
+- `encoder/`: 39 cases. Content layout, attachments at every size around the block size, exact
   length and repeatability, declared escaped lengths, reasoning and tool round trips, failed tool
-  results, admission.
-- `transport/`: 52 cases. Authentication, the caller's headers, status mapping, the stream,
+  results, tool choice and response format, admission.
+- `transport/`: 54 cases. Authentication, the caller's headers, status mapping, the stream,
   timeouts, cancellation, base URLs, model listing, and compatibility learning, against a
   scripted loopback server.
 

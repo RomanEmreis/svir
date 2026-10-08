@@ -1,0 +1,11 @@
+{
+  "description": "Text is the server's default, so it is not sent.",
+  "request": {
+    "model": "m",
+    "response_format": "text",
+    "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+  },
+  "expect": {
+    "body": {"model": "m", "stream": true, "messages": [{"role": "user", "content": "hi"}]}
+  }
+}

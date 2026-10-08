@@ -32,6 +32,50 @@ impl Tool {
     }
 }
 
+/// The JSON Schema of `T`, without what describes the schema itself, which is of no use to a
+/// model.
+#[cfg(feature = "schemars")]
+pub(crate) fn schema_of<T: schemars::JsonSchema>() -> Value {
+    let mut schema = schemars::schema_for!(T).to_value();
+    if let Some(schema) = schema.as_object_mut() {
+        schema.remove("$schema");
+        schema.remove("title");
+    }
+
+    schema
+}
+
+/// Whether the model may call a tool, must call one, or must call a given one.
+///
+/// Each wire API maps it explicitly: Chat Completions sends `tool_choice`. `Auto` is every
+/// server's default and is not sent; neither is `None` in a request that offers no tools, since
+/// there is nothing to forbid.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ToolChoice {
+    /// The model decides. The default.
+    #[default]
+    Auto,
+    /// The model may not call a tool.
+    None,
+    /// The model must call at least one of the tools the request offers.
+    Required,
+    /// The model must call the tool of this name, which the request offers.
+    Tool(String),
+}
+
+impl ToolChoice {
+    /// The model must call the tool named `name`.
+    pub fn tool(name: impl Into<String>) -> Self {
+        Self::Tool(name.into())
+    }
+
+    pub(crate) fn is_auto(&self) -> bool {
+        matches!(self, Self::Auto)
+    }
+}
+
 /// A call the model made: which tool, and the arguments exactly as the model wrote them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]

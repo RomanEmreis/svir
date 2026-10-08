@@ -1,0 +1,37 @@
+{
+  "description": "A schema marked strict is sent with strict: true.",
+  "request": {
+    "model": "m",
+    "response_format": {
+      "schema": {
+        "name": "weather",
+        "schema": {
+          "type": "object",
+          "properties": {"city": {"type": "string"}, "celsius": {"type": "number"}},
+          "required": ["city", "celsius"]
+        },
+        "strict": true
+      }
+    },
+    "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "response_format": {
+        "type": "json_schema",
+        "json_schema": {
+          "name": "weather",
+          "schema": {
+            "type": "object",
+            "properties": {"city": {"type": "string"}, "celsius": {"type": "number"}},
+            "required": ["city", "celsius"]
+          },
+          "strict": true
+        }
+      },
+      "messages": [{"role": "user", "content": "hi"}]
+    }
+  }
+}

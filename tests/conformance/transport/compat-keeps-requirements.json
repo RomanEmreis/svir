@@ -1,0 +1,75 @@
+{
+  "description": "The lean retry, and every request after it, leaves out the optional fields but keeps what the answer must meet: tool_choice and response_format.",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 400,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"error\":{\"code\":\"unsupported_parameter\",\"message\":\"secret-server-detail\"}}"
+    },
+    {
+      "status": 200,
+      "headers": {"content-type": "text/event-stream"},
+      "body_file": "../decoder/final.sse"
+    },
+    {
+      "status": 200,
+      "headers": {"content-type": "text/event-stream"},
+      "body_file": "../decoder/final.sse"
+    }
+  ],
+  "calls": [
+    {
+      "request": {
+        "model": "m",
+        "reasoning_effort": "low",
+        "include_usage": true,
+        "tools": [{"name": "lookup", "description": "Look up a value.", "input_schema": {"type": "object"}}],
+        "tool_choice": "none",
+        "response_format": "json",
+        "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+      },
+      "expect": {
+        "completion": {"finish": "stop", "text": "42", "usage": {"input": 24, "output": 3, "total": 27}}
+      }
+    },
+    {
+      "request": {
+        "model": "m",
+        "reasoning_effort": "low",
+        "include_usage": true,
+        "tools": [{"name": "lookup", "description": "Look up a value.", "input_schema": {"type": "object"}}],
+        "tool_choice": "none",
+        "response_format": "json",
+        "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+      },
+      "expect": {
+        "completion": {"finish": "stop", "text": "42", "usage": {"input": 24, "output": 3, "total": 27}}
+      }
+    }
+  ],
+  "expect_requests": [
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "body_includes": {
+        "reasoning_effort": "low",
+        "stream_options": {"include_usage": true},
+        "tool_choice": "none",
+        "response_format": {"type": "json_object"}
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "body_includes": {"tool_choice": "none", "response_format": {"type": "json_object"}},
+      "body_excludes": ["reasoning_effort", "stream_options"]
+    },
+    {
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "body_includes": {"tool_choice": "none", "response_format": {"type": "json_object"}},
+      "body_excludes": ["reasoning_effort", "stream_options"]
+    }
+  ]
+}

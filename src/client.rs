@@ -214,7 +214,8 @@ impl<B: Backend> Client<B> {
 
         // A 400 or 422 to a request with optional fields may be about those fields. Nothing was
         // generated, so one attempt without them is safe. A rejection the body explains, a context
-        // overflow or a blocked prompt, is not about them (D26, D36).
+        // overflow or a blocked prompt, is not about them (D26, D36). What the answer must meet,
+        // the tool choice and the response format, is not optional: the attempt keeps it (D40).
         let optional = request.reasoning.is_some()
             || request.include_usage.unwrap_or(self.inner.include_usage);
         if !lean
