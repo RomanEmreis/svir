@@ -1,6 +1,6 @@
 [package]
 name = "svir"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 rust-version = "1.85"
 description = "A small, composable SDK for talking to large language models"
@@ -35,7 +35,7 @@ tls-aws-lc = ["client", "dep:hyper-rustls", "dep:rustls", "hyper-rustls/aws-lc-r
 base64 = "0.23.1"
 bytes = "1.12.1"
 futures-core = { version = "0.3.34", default-features = false, features = ["std"], optional = true }
-hyper = { version = "1", features = ["client", "http1"], optional = true }
+hyper = { version = "1.12.0", features = ["client", "http1"], optional = true }
 hyper-rustls = { version = "0.27.10", default-features = false, features = ["http1", "http2", "tls12", "webpki-roots"], optional = true }
 hyper-util = { version = "0.1.21", features = ["client-legacy", "http1", "tokio"], optional = true }
 rustls = { version = "0.23.45", default-features = false, features = ["std", "tls12"], optional = true }
