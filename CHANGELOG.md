@@ -19,8 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   JSON Schema, with `strict` sent only when it is set.
   `Schema::of::<T>()` derives the schema from a type with the `schemars`
   feature (D40, D41).
-* **`Completion::parse::<T>()`**: the answer's text read as JSON into `T`.
-  Nothing else checks the answer against the schema (D41).
+* **`Completion::parse::<T>()`**: the answer's text read as JSON into `T`,
+  when it finished with `Stop`; any other finish is an error, even for valid
+  JSON. Nothing else checks the answer against the schema (D41).
 * **`FinishReason::Refusal`**: the model refused to answer, and the
   completion's text is its refusal, streamed as `Event::Text`. Chat
   Completions sends it in `refusal` in place of `content`, with a `stop`

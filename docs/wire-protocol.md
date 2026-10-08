@@ -110,8 +110,9 @@ was generated in that case, so retrying without them is safe.
   `reasoning_content` and `content` stays empty; with `reasoning_effort: "none"` it arrives as
   `content`. Unset, the model also answered wrongly, as if it had not read the question. Known
   and open in LM Studio's tracker (#1698, #1773, #1971), for GGUF and MLX models alike.
-- Otherwise the answer arrives as ordinary `content` deltas. An answer cut off by `length` is not
-  valid JSON.
+- Otherwise the answer arrives as ordinary `content` deltas. An answer cut off by `length` is
+  incomplete and may still be valid JSON: a number at the root cut short, for one. The guide
+  to structured output says to treat `length` as incomplete before parsing.
 
 ## 3. Response stream
 

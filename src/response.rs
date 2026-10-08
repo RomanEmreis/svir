@@ -206,11 +206,21 @@ impl Completion {
     /// Parses the answer's text as JSON into `T`, as asked for with
     /// [`Request::response_format`](crate::Request::response_format).
     ///
-    /// Nothing else checks the answer against the format: `T` is what it is checked against. An
-    /// answer the output limit cut off (`FinishReason::Length`) does not parse, nor a refusal
-    /// (`FinishReason::Refusal`), nor an answer a server sent as reasoning with no text, which is
-    /// read from the text alone.
+    /// Only a whole answer is parsed, one that finished with [`FinishReason::Stop`]; any other
+    /// finish is an error before the text is read. Valid JSON is not enough: an answer the output
+    /// limit cut off can be valid, a number cut short for one, and a refusal or a filtered answer
+    /// is not the answer asked for. Read such text with `serde_json` when it is wanted anyway.
+    ///
+    /// Nothing else checks the answer against the format: `T` is what it is checked against. The
+    /// text alone is read, so an answer a server sent as reasoning with no text does not parse.
     pub fn parse<T: DeserializeOwned>(&self) -> serde_json::Result<T> {
+        if self.finish != FinishReason::Stop {
+            return Err(serde::de::Error::custom(format_args!(
+                "the answer is not whole: it finished with {:?}",
+                self.finish
+            )));
+        }
+
         serde_json::from_str(&self.text)
     }
 
@@ -269,7 +279,7 @@ mod tests {
     }
 
     #[test]
-    fn the_answer_parses_on_demand() {
+    fn only_a_whole_answer_parses() {
         #[derive(Debug, PartialEq, Deserialize)]
         struct Weather {
             celsius: f64,
@@ -280,9 +290,22 @@ mod tests {
         done.text = "\n\n{\"celsius\": 12.5}".into();
         assert_eq!(done.parse::<Weather>().unwrap(), Weather { celsius: 12.5 });
 
-        done.finish = FinishReason::Length;
-        done.text = "{\"cel".into();
-        assert!(done.parse::<Weather>().is_err());
+        // Valid JSON is not enough: "12" may be what the output limit left of "123".
+        done.text = "12".into();
+        assert_eq!(done.parse::<u32>().unwrap(), 12);
+        for finish in [
+            FinishReason::Length,
+            FinishReason::ToolCalls,
+            FinishReason::ContentFilter,
+            FinishReason::Refusal,
+        ] {
+            done.finish = finish;
+            let error = done.parse::<u32>().unwrap_err();
+            assert!(
+                error.to_string().contains(&format!("{finish:?}")),
+                "{error}"
+            );
+        }
     }
 
     #[test]

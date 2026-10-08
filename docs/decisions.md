@@ -615,8 +615,15 @@ Resolves the last question of #4. The decoder does not check an answer against t
 was asked to match. That takes a JSON Schema validator, a heavy dependency for what a type
 already says (D18), and only the caller knows whether an answer that does not fit is an error
 or a reason to ask again. `Completion::parse::<T>()` reads the text into `T` with serde, as
-`ToolCall::parse` reads arguments; an answer the type does not fit is serde's error. An answer
-the output limit cut off (`Length`) does not parse.
+`ToolCall::parse` reads arguments; an answer the type does not fit is serde's error.
+
+Only a whole answer is parsed, one that finished with `Stop`; any other finish is an error before
+the text is read. Valid JSON is not enough. An answer the output limit cut off can be valid, a
+number at the root cut short for one, and the guidance for structured output is to treat
+`length` as incomplete before reading anything; a refusal (D42) or a filtered answer (D35) is
+not the answer asked for, nor is the text beside tool calls. The error is a serde error too,
+made with `de::Error::custom`, so `parse` keeps `ToolCall::parse`'s signature. A caller that
+wants such text anyway reads it with `serde_json` itself.
 
 Whether the answer keeps to the schema is the server's part. Local servers constrain sampling to
 it. OpenAI and Azure OpenAI guarantee it only in strict mode, which also asks more of the schema:
@@ -631,6 +638,9 @@ the reasoning when the text is empty would work there, and would take reasoning 
 everywhere else; implying `reasoning_effort: none` with a format would send what the request did
 not set (P11). The text stays what the server sent (D31), and a caller of such a server asks for
 `Effort::Off` with the format.
+
+*Revised 2026-10-08, in review: `parse` read the text whatever the finish, and an answer the
+output limit cut off was said never to parse.*
 
 ### D42. A refusal is its own finish reason, and its text is the answer's
 

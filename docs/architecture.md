@@ -192,8 +192,8 @@ struct Completion {
   `TruncatedStream` error, never a partial completion.
 - `Completed` is the last item. Bytes after `[DONE]` are not read (P9).
 - An answer asked for as JSON arrives as text like any other. `Completion::parse::<T>()` reads it
-  into a type; nothing checks it against the schema, nor the calls against the tool choice
-  (D40, D41).
+  into a type when it finished with `Stop`, and fails on any other finish; nothing checks it
+  against the schema, nor the calls against the tool choice (D40, D41).
 
 The outcome does not depend on how the bytes were chunked (P9). Events arrive in wire order, and
 an error is delivered after every event decoded before it, even when both came in the same chunk.
