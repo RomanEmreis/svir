@@ -26,6 +26,7 @@ and observed server behavior. How svir handles each fact is in [architecture.md]
 | `temperature` | `0.0..=2.0` |
 | `n` | `1`; more than one choice is not supported |
 | `tools`, `tool_choice` | See 2.4 |
+| `response_format` | See 2.6 |
 | `stream_options` | `{"include_usage": true}` requests a trailing usage chunk. Optional: see 2.5 |
 | `reasoning_effort` | `none`, `low`, `medium`, `high`, `xhigh`. Optional: see 2.5 |
 
@@ -67,6 +68,16 @@ from disk needs the exact length up front, because not every server accepts a ch
 "tool_choice": "auto"
 ```
 
+`tool_choice` is `"auto"` (the model decides), `"none"` (no call), `"required"` (at least one
+call), or `{"type": "function", "function": {"name": "..."}}` (a call of that tool). The default
+is `none` without tools and `auto` with them. Azure OpenAI was reported to reject a
+`tool_choice` sent without `tools` with 400.
+
+LM Studio takes the strings only. A named function is rejected with 400 and
+`{"error":"Invalid tool_choice type: 'object'. Supported string values: none, auto, required"}`.
+`required` is accepted and not kept: asked to say hello with a tool required, the model said
+hello, finished with `stop`, and called nothing.
+
 A model without tool support may ignore tools or fail. Tool calling needs a tool-capable model
 and must be verified per model.
 
@@ -75,6 +86,33 @@ and must be verified per model.
 LM Studio accepts `reasoning_effort` and `stream_options`. A stricter server (plain mlx-lm or
 llama.cpp builds) may reject the whole request with 400 or 422 because of either field. Nothing
 was generated in that case, so retrying without them is safe.
+
+### 2.6 Structured output
+
+```json
+"response_format": {"type": "json_object"}
+"response_format": {"type": "json_schema", "json_schema": {"name": "...", "schema": {}, "strict": true}}
+```
+
+- `json_object` asks for a JSON object of any shape. OpenAI rejects it unless the word "JSON"
+  appears somewhere in the messages.
+- `json_schema` asks for JSON that matches `schema`. `name` is required, of ASCII letters,
+  digits, `_`, and `-`, at most 64 characters.
+- With `strict: true`, OpenAI and Azure OpenAI guarantee an answer that matches, and accept only
+  schemas in which every object lists all of its properties under `required` and sets
+  `additionalProperties: false`. Without it the schema guides the model but binds nothing.
+- Local servers constrain sampling to the schema: LM Studio compiles it into a grammar
+  (llama.cpp) for GGUF models and uses Outlines for MLX models.
+- LM Studio takes `json_schema` and `text` only. `json_object` is rejected with 400 and
+  `{"error":"'response_format.type' must be 'json_schema' or 'text'"}`, its error a plain string.
+- LM Studio holds a reasoning model's reasoning to the schema as well, from its first token. With
+  reasoning on (`reasoning_effort` unset, `low`, or `medium`), the whole JSON arrives as
+  `reasoning_content` and `content` stays empty; with `reasoning_effort: "none"` it arrives as
+  `content`. Unset, the model also answered wrongly, as if it had not read the question. Known
+  and open in LM Studio's tracker (#1698, #1773, #1971), for GGUF and MLX models alike.
+- Otherwise the answer arrives as ordinary `content` deltas. An answer cut off by `length` is
+  incomplete and may still be valid JSON: a number at the root cut short, for one. The guide
+  to structured output says to treat `length` as incomplete before parsing.
 
 ## 3. Response stream
 
@@ -98,8 +136,12 @@ was generated in that case, so retrying without them is safe.
 - `id` and `model` stay the same for the whole stream.
 - With `n: 1` there is exactly one choice, index `0`.
 - Delta keys: `role` (`"assistant"`, first chunk), `content`, `reasoning_content`, `reasoning`,
-  `tool_calls`. Keys can be present with `null`. Other keys (`audio`, `refusal`, deprecated
+  `refusal`, `tool_calls`. Keys can be present with `null`. Other keys (`audio`, deprecated
   `function_call`) are features outside this protocol subset.
+- `refusal` is the model's refusal to answer, in place of `content`: a string, in pieces as
+  `content` comes, with `content` null and the finish `stop`. OpenAI sends it above all when it
+  will not give an answer in the format asked for (2.6). Azure sends `"refusal": null` on its
+  first delta (3.7).
 - `finish_reason` appears once, on the last choice chunk: `stop`, `tool_calls`, `length`, or
   `content_filter`, when a content filter stopped the answer (3.7). Others exist in the wider
   schema, such as the deprecated `function_call`.
@@ -294,6 +336,9 @@ telling them apart; the practical filter is a name heuristic (`embed`, `rerank`,
 
 Sources: [LM Studio Chat Completions](https://lmstudio.ai/docs/developer/openai-compat/chat-completions),
 [LM Studio tool use](https://lmstudio.ai/docs/developer/openai-compat/tools),
+[LM Studio structured output](https://lmstudio.ai/docs/developer/openai-compat/structured-output),
+[LM Studio: the schema held to the reasoning](https://github.com/lmstudio-ai/lmstudio-bug-tracker/issues/1773),
+[Structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs),
 [LM Studio authentication](https://lmstudio.ai/docs/developer/core/authentication),
 [Chat Completions streaming events](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events),
 [Azure OpenAI content streaming](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/content-streaming),

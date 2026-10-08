@@ -54,11 +54,11 @@ pub use stream::{EventStream, RawStream};
 pub use decode::{Limits, Mode, Think};
 pub use error::{Error, ErrorKind, Result};
 pub use message::{Image, Message, Part, Role, Source, TextFile, ToolResult};
-pub use request::{Effort, Request};
+pub use request::{Effort, Request, ResponseFormat, Schema};
 pub use response::{
     Completion, Event, FinishReason, Reasoning, ReasoningSource, Timing, ToolCallDelta, Usage,
 };
-pub use tool::{Tool, ToolCall};
+pub use tool::{Tool, ToolCall, ToolChoice};
 pub use tools::{ToolOutput, Toolbox, Tools};
 
 /// The everyday imports.
@@ -67,6 +67,7 @@ pub mod prelude {
     pub use crate::{Client, EventStream};
     pub use crate::{
         Completion, Effort, Error, ErrorKind, Event, FinishReason, Image, Message, Part, Reasoning,
-        Request, Role, TextFile, Tool, ToolCall, ToolResult, Toolbox, Tools, Usage,
+        Request, ResponseFormat, Role, Schema, TextFile, Tool, ToolCall, ToolChoice, ToolResult,
+        Toolbox, Tools, Usage,
     };
 }

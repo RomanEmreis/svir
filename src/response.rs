@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::ToolCall;
 
@@ -106,6 +106,9 @@ pub enum FinishReason {
     /// That text may hold what the filter flagged: an asynchronous filter vets it only after it
     /// was streamed, even after the model finished. A caller that shows it withdraws it.
     ContentFilter,
+    /// The model refused to answer, and the text is its refusal, for the caller to show. It
+    /// does not have the format the request asked for.
+    Refusal,
 }
 
 /// Token counts, as the server reported them.
@@ -200,6 +203,27 @@ impl Completion {
         }
     }
 
+    /// Parses the answer's text as JSON into `T`, as asked for with
+    /// [`Request::response_format`](crate::Request::response_format).
+    ///
+    /// Only a whole answer is parsed, one that finished with [`FinishReason::Stop`]; any other
+    /// finish is an error before the text is read. Valid JSON is not enough: an answer the output
+    /// limit cut off can be valid, a number cut short for one, and a refusal or a filtered answer
+    /// is not the answer asked for. Read such text with `serde_json` when it is wanted anyway.
+    ///
+    /// Nothing else checks the answer against the format: `T` is what it is checked against. The
+    /// text alone is read, so an answer a server sent as reasoning with no text does not parse.
+    pub fn parse<T: DeserializeOwned>(&self) -> serde_json::Result<T> {
+        if self.finish != FinishReason::Stop {
+            return Err(serde::de::Error::custom(format_args!(
+                "the answer is not whole: it finished with {:?}",
+                self.finish
+            )));
+        }
+
+        serde_json::from_str(&self.text)
+    }
+
     /// Output tokens per second, from the first visible token to the last.
     ///
     /// `None` without usage or timing, with one output token or fewer, or over a window shorter
@@ -252,6 +276,36 @@ mod tests {
     fn the_rate_runs_from_the_first_visible_token_to_the_last() {
         let rate = timed(100, 2_000, 4_000).tokens_per_second().unwrap();
         assert!((rate - 50.0).abs() < 1e-9, "{rate}");
+    }
+
+    #[test]
+    fn only_a_whole_answer_parses() {
+        #[derive(Debug, PartialEq, Deserialize)]
+        struct Weather {
+            celsius: f64,
+        }
+
+        let mut done = Completion::new(FinishReason::Stop);
+        // A server that separates reasoning may start the answer with line breaks (D31).
+        done.text = "\n\n{\"celsius\": 12.5}".into();
+        assert_eq!(done.parse::<Weather>().unwrap(), Weather { celsius: 12.5 });
+
+        // Valid JSON is not enough: "12" may be what the output limit left of "123".
+        done.text = "12".into();
+        assert_eq!(done.parse::<u32>().unwrap(), 12);
+        for finish in [
+            FinishReason::Length,
+            FinishReason::ToolCalls,
+            FinishReason::ContentFilter,
+            FinishReason::Refusal,
+        ] {
+            done.finish = finish;
+            let error = done.parse::<u32>().unwrap_err();
+            assert!(
+                error.to_string().contains(&format!("{finish:?}")),
+                "{error}"
+            );
+        }
     }
 
     #[test]

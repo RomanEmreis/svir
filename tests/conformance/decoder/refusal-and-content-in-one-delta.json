@@ -1,0 +1,10 @@
+{
+  "description": "Content and a refusal in one delta fail in both modes, and the chunk contributes none of its text.",
+  "chunks": [
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Sure\",\"refusal\":\"No.\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"id\":\"c\",\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+    "data: [DONE]\n\n"
+  ],
+  "strides": [1, 3, 8192],
+  "expect": {"strict": {"error": "protocol", "partial": {"text": ""}}, "lenient": "same"}
+}

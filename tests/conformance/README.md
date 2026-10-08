@@ -9,9 +9,9 @@ on an open decision lists it in `open`.
 
 | Directory | Covers | Status |
 | --- | --- | --- |
-| `decoder/` | SSE framing, deltas, reasoning, tool calls, usage, limits, errors inside the stream, strict and lenient | 68 cases, run by `tests/conformance_decoder.rs` |
-| `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, admission | 27 cases, run by `tests/conformance_encoder.rs` |
-| `transport/` | Authentication, extra headers, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 52 cases, run by `tests/conformance_transport.rs` |
+| `decoder/` | SSE framing, deltas, reasoning, refusals, tool calls, usage, limits, errors inside the stream, strict and lenient | 75 cases, run by `tests/conformance_decoder.rs` |
+| `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, tool choice and response format, admission | 39 cases, run by `tests/conformance_encoder.rs` |
+| `transport/` | Authentication, extra headers, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 54 cases, run by `tests/conformance_transport.rs` |
 
 ## Decoder cases
 
@@ -62,7 +62,7 @@ A completion:
 
 | Field | Meaning |
 | --- | --- |
-| `finish` | `stop`, `tool_calls`, `length`, or `content_filter`. Required. |
+| `finish` | `stop`, `tool_calls`, `length`, `content_filter`, or `refusal`. Required. |
 | `text` | The answer. Default `""`. |
 | `reasoning` | `[{"source": ..., "text": ...}]`, one entry per carrier in order of first appearance, text concatenated. `source` is `reasoning_content`, `reasoning`, or `think`. Default `[]`. |
 | `calls` | `[{"id": ..., "name": ..., "arguments": ...}]` in index order; `arguments` is the raw string. Default `[]`. |
@@ -114,12 +114,18 @@ svir's API:
   "reasoning_effort": "low",
   "include_usage": true,
   "tools": [{"name": "lookup", "description": "...", "input_schema": {"type": "object"}}],
+  "tool_choice": {"tool": "lookup"},
+  "response_format": {"schema": {"name": "weather", "schema": {"type": "object"}, "strict": true}},
   "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
 }
 ```
 
 Everything but `model` and `messages` is optional and present only when the request sets it.
-`role` is `system`, `user`, `assistant`, or `tool`. Parts:
+`tool_choice` is `auto`, `none`, `required`, or `{"tool": name}`. `response_format` is `text`,
+`json`, or `{"schema": {"name": ..., "schema": ..., "strict": true}}`, where `strict` is present
+only when true. Both are the serde form of svir's `ToolChoice` and `ResponseFormat`;
+`tests/serde_contract.rs` keeps them equal. `role` is `system`, `user`, `assistant`, or `tool`.
+Parts:
 
 | Part | Where | Meaning |
 | --- | --- | --- |
@@ -139,7 +145,7 @@ Everything but `model` and `messages` is optional and present only when the requ
 | `attachments` | `key -> attachment`: `media_type` (images) or `name` (files), content as `hex` or `text`, and optionally `declared_size` and, for a file, `escaped_len`: its length once escaped into a JSON string, as the caller declares it. |
 | `options` | `lean`: leave out the optional fields. `send_reasoning`: send reasoning back. `block_bytes`: block sizes to read attachments in (multiples of 3). `context_tokens`: check admission. |
 | `open` | As for decoder cases. |
-| `expect` | `{"body": <JSON>}`, `{"error": "attachment" or "context_overflow"}`, or `{"open": id}`. |
+| `expect` | `{"body": <JSON>}`, `{"error": "attachment", "context_overflow", or "unsupported"}`, or `{"open": id}`. |
 
 Running a case:
 
@@ -154,7 +160,9 @@ Running a case:
    gives identical bytes.
 4. For `attachment`: building the body fails, or its stream fails instead of completing with
    bytes that disagree with the declared length or are not UTF-8 where text is required.
-5. With `context_tokens`: the request is admitted exactly when `max_tokens` is above 0 and the
+5. For `unsupported`: building the body fails, before any byte is sent. The request asks for
+   something the body cannot carry, such as a call of a tool it does not offer.
+6. With `context_tokens`: the request is admitted exactly when `max_tokens` is above 0 and the
    declared length plus `max_tokens` is at most `context_tokens`. Otherwise the outcome is
    `context_overflow`, before any byte is sent.
 

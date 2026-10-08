@@ -1,0 +1,35 @@
+{
+  "description": "JSON output matching a schema is a json_schema response format, with the schema's name; strict is not implied.",
+  "request": {
+    "model": "m",
+    "response_format": {
+      "schema": {
+        "name": "weather",
+        "schema": {
+          "type": "object",
+          "properties": {"city": {"type": "string"}, "celsius": {"type": "number"}},
+          "required": ["city", "celsius"]
+        }
+      }
+    },
+    "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "response_format": {
+        "type": "json_schema",
+        "json_schema": {
+          "name": "weather",
+          "schema": {
+            "type": "object",
+            "properties": {"city": {"type": "string"}, "celsius": {"type": "number"}},
+            "required": ["city", "celsius"]
+          }
+        }
+      },
+      "messages": [{"role": "user", "content": "hi"}]
+    }
+  }
+}

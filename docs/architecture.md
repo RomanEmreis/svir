@@ -74,6 +74,10 @@ builder methods, with public fields for reading.
 
 - A **request** has a model, an optional system prompt, messages, tools, and parameters. The
   system prompt is a field, not a message: each adapter puts it where its API expects it.
+- A **tool choice** lets the model decide (the default), forbids a tool call, or requires one, of
+  any tool offered or of one by name. A **response format** asks for text (the default), JSON,
+  or JSON matching a `Schema`: a name, a JSON Schema, and whether the server must keep to it
+  strictly. Both are what the answer must meet, and are never dropped (D40).
 - A **message** has a role (`User`, `Assistant`, `Tool`; no system role) and parts in order:
   text, image, text file, reasoning and tool calls (assistant), and a tool result (tool role).
   Which parts a role may carry is checked when the request is encoded. A `Completion` converts
@@ -89,8 +93,8 @@ builder methods, with public fields for reading.
   them. svir reports only what the server said; estimates are the caller's.
 - **Timing** is when the first and last visible tokens arrived, from the start of the response;
   `Completion::tokens_per_second` applies the rule of P7.
-- **Finish reason** is `stop`, `tool_calls`, `length`, or `content_filter` (D35). Anything else
-  is an error in both modes.
+- **Finish reason** is `stop`, `tool_calls`, `length`, `content_filter` (D35), or `refusal`,
+  when the model refused and the text is its refusal (D42). Any other is an error in both modes.
 - **Reasoning** carries its source (`reasoning_content`, `reasoning`, or `think`), which is all
   Chat Completions needs to send it back. Opaque continuation data, such as signed thinking
   blocks, arrives with the first wire API that needs it (O6).
@@ -138,7 +142,12 @@ What goes into the body:
   empty-string content for a model message with tool calls and no text (D24);
 - a part its role cannot carry, such as an image in a model message, is `Unsupported`, and an
   image without a media type is `Attachment`: nothing is dropped silently;
-- tools as `{"type": "function", "function": {"name", "description", "parameters"}}`.
+- tools as `{"type": "function", "function": {"name", "description", "parameters"}}`;
+- a tool choice as `"none"`, `"required"`, or `{"type": "function", "function": {"name"}}`, and
+  a response format as `{"type": "json_object"}` or
+  `{"type": "json_schema", "json_schema": {"name", "schema", "strict"}}`, with `strict` only
+  when it is on. The defaults are not sent, nor is `none` without tools. A call required of a
+  request that offers no tools, or of a tool it does not offer, is `Unsupported` (D40).
 
 Admission (P14): with `encoder.context_tokens(n)`, the length plus `max_tokens` must fit in the
 context size and `max_tokens` must not be 0, or the request fails with `ContextOverflow` before a
@@ -182,6 +191,9 @@ struct Completion {
   emitted after a finish reason and `[DONE]` (D5). A stream that ends before that is a
   `TruncatedStream` error, never a partial completion.
 - `Completed` is the last item. Bytes after `[DONE]` are not read (P9).
+- An answer asked for as JSON arrives as text like any other. `Completion::parse::<T>()` reads it
+  into a type when it finished with `Stop`, and fails on any other finish; nothing checks it
+  against the schema, nor the calls against the tool choice (D40, D41).
 
 The outcome does not depend on how the bytes were chunked (P9). Events arrive in wire order, and
 an error is delivered after every event decoded before it, even when both came in the same chunk.
@@ -202,7 +214,7 @@ or a tool call wrong (P8).
 | Unknown SSE field (not `data`, `id`, `retry`, `event: message`, `event: error`, or a comment) | `Unsupported` | Ignored |
 | `data` that is not valid JSON | `Protocol` | Ignored |
 | Invalid UTF-8 in an event | `Protocol` | Replaced lossily |
-| Unknown key in a delta (for example `audio`, `refusal`) | `Unsupported` | Ignored |
+| Unknown key in a delta (for example `audio`) | `Unsupported` | Ignored |
 | A chunk with an empty `choices` array before the finish reason, other than a prompt report | `Protocol` | Ignored |
 | More than one choice, or a choice index other than 0 | `Unsupported` | First choice read |
 | `id` or `model` changes mid-stream | `Protocol` | Ignored |
@@ -218,6 +230,7 @@ Enforced the same way in both modes (P8):
 | End of stream, or `[DONE]`, before a finish reason; end of stream before `[DONE]` | `TruncatedStream` |
 | Tool calls with duplicate or changing IDs, missing IDs or names, or non-contiguous indices | `Protocol` |
 | `tool_calls` finish without calls, or calls with a `stop` or `content_filter` finish | `Protocol` |
+| Content and a refusal in one answer, or a refusal with tool calls (D42) | `Protocol` |
 | A finish reason other than `stop`, `tool_calls`, `length`, and `content_filter` (D35) | `Unsupported` |
 | Content after the finish reason (D35) | `Unsupported` |
 | An annotation from an asynchronous content filter with a finish reason other than `content_filter` (D35) | `Unsupported` |
@@ -230,8 +243,9 @@ A prompt report, a chunk with an empty `choices` array and `prompt_filter_result
 both modes, its empty `id` and `model` included. So is an annotation from an asynchronous content
 filter, a choice with `content_filter_offsets` and no delta, before the finish reason or after
 it, unless it blocks: a verdict marked `filtered: true`, or a `content_filter` finish, makes the
-answer's finish `ContentFilter`, even after the model's own (D35). A call ID repeated on later
-pieces of the same call is consistent; one that changes is not (P10).
+answer's finish `ContentFilter`, even after the model's own (D35). A refusal, sent in
+`refusal` in place of `content`, is the answer's text, and makes the finish `Refusal` (D42). A
+call ID repeated on later pieces of the same call is consistent; one that changes is not (P10).
 
 Limits and their current defaults: 64 MiB of wire bytes per attempt (D32), 256 KiB per SSE
 event, and 64 tool calls per response.
@@ -309,6 +323,11 @@ attempt. If the retry fails too, the original error is reported. The memory live
 cheap-to-clone handle shared by every request to that server. A 400/422 means nothing was
 generated, so this retry is safe. A 400 or 422 that is a context overflow, or a prompt the
 content filter blocked, is not about those fields and is reported without the retry (D26, D36).
+
+A tool choice and a response format are not optional in this sense: the answer must meet them.
+The retry keeps them, a server learned to be strict still gets them, and a request that carries
+them and no optional field is not retried. A server that does not take them fails the request
+(D40).
 
 ### 4.8 Errors
 
@@ -411,6 +430,23 @@ loop {
 
 `reply` in the `wrap` closure arrives with the response headers, not the whole answer; a layer
 that needs the whole answer wraps the returned stream (D15).
+
+**Structured output.** An answer as JSON to the schema of a type, read back into it; nothing
+checks it on the way in but the parse (D40, D41). `.tool_choice(ToolChoice::tool("lookup"))`
+requires a call in the same way:
+
+```rust
+#[derive(Deserialize, JsonSchema)]
+struct River {
+    name: String,
+    length_km: u32,
+}
+
+let request = Request::new("qwen3-27b")
+    .response_format(Schema::of::<River>())
+    .user("Describe the river that joins Lake Onega to Lake Ladoga.");
+let river: River = llm.complete(&request).await?.parse()?;
+```
 
 **A proxy or a custom transport.** Relay the server's bytes unchanged and decode them on the way
 past (D20):

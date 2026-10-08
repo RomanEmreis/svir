@@ -161,12 +161,7 @@ impl Tools {
         Fut: Future<Output = R> + Send + 'static,
         R: ToolOutput,
     {
-        let mut schema = schemars::schema_for!(A).to_value();
-        if let Some(schema) = schema.as_object_mut() {
-            // Meta-data about the schema itself is of no use to a model.
-            schema.remove("$schema");
-            schema.remove("title");
-        }
+        let schema = crate::tool::schema_of::<A>();
 
         self.add_tool(Tool::new(name, description).schema(schema), handler)
     }

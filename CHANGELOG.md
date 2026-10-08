@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.1.5
+
+### Added
+
+* **`Request::tool_choice(ToolChoice)`**: the model decides (`Auto`, the
+  default, not sent), may not call a tool (`None`), must call one
+  (`Required`), or must call a given one (`ToolChoice::tool(name)`). A call
+  required of a request that offers no tools, or of a tool it does not
+  offer, is `ErrorKind::Unsupported` when the request is encoded (D40).
+* **`Request::response_format(..)`**: the answer as a JSON object
+  (`ResponseFormat::Json`), or as JSON matching a `Schema`, a name and a
+  JSON Schema, with `strict` sent only when it is set.
+  `Schema::of::<T>()` derives the schema from a type with the `schemars`
+  feature (D40, D41).
+* **`Completion::parse::<T>()`**: the answer's text read as JSON into `T`,
+  when it finished with `Stop`; any other finish is an error, even for valid
+  JSON. Nothing else checks the answer against the schema (D41).
+* **`FinishReason::Refusal`**: the model refused to answer, and the
+  completion's text is its refusal, streamed as `Event::Text`. Chat
+  Completions sends it in `refusal` in place of `content`, with a `stop`
+  finish; OpenAI does, above all for a structured answer it will not give.
+  Content and a refusal in one answer, or a refusal with tool calls, are
+  `ErrorKind::Protocol` (D42).
+* **The `structured` example**: an answer to the schema of a type, parsed
+  back into it.
+
+A tool choice and a response format are what the answer must meet, so the
+compatibility retry, which leaves out `reasoning_effort` and
+`stream_options`, keeps them. A server that does not take them fails the
+request with `Unsupported` and its own message (D40).
+
+The answer is not checked against either: the caller reads `calls` and
+parses the text. LM Studio takes `required` without keeping it, rejects a
+tool named in `tool_choice` and `ResponseFormat::Json`, and with reasoning
+on sends JSON to a schema as reasoning, with no text; `Effort::Off` with
+the format avoids that.
+
+### Changed
+
+* **A refusal is read.** Strict mode failed it with `Unsupported`, and
+  lenient mode dropped it and completed with no text (D42).
+
 ## 0.1.4
 
 ### Added

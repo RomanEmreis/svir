@@ -1,0 +1,9 @@
+{
+  "description": "A tool call required of a request that offers no tools cannot be met: an error before anything is sent.",
+  "request": {
+    "model": "m",
+    "tool_choice": "required",
+    "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+  },
+  "expect": {"error": "unsupported"}
+}

@@ -1,0 +1,41 @@
+{
+  "description": "Tools forbidden: the descriptors are sent, and tool_choice says none.",
+  "request": {
+    "model": "m",
+    "tools": [
+      {
+        "name": "lookup",
+        "description": "Look up a value.",
+        "input_schema": {
+          "type": "object",
+          "properties": {"value": {"type": "integer"}},
+          "required": ["value"]
+        }
+      }
+    ],
+    "tool_choice": "none",
+    "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "lookup",
+            "description": "Look up a value.",
+            "parameters": {
+              "type": "object",
+              "properties": {"value": {"type": "integer"}},
+              "required": ["value"]
+            }
+          }
+        }
+      ],
+      "tool_choice": "none",
+      "messages": [{"role": "user", "content": "hi"}]
+    }
+  }
+}

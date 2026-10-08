@@ -157,3 +157,79 @@ fn events_serialize_as_documented() {
         ])
     );
 }
+
+#[test]
+fn what_the_answer_must_meet_serializes_as_documented() {
+    let choices = [
+        ToolChoice::Auto,
+        ToolChoice::None,
+        ToolChoice::Required,
+        ToolChoice::tool("lookup"),
+    ];
+    assert_eq!(
+        serde_json::to_value(&choices).unwrap(),
+        json!(["auto", "none", "required", {"tool": "lookup"}])
+    );
+
+    let weather = json!({"type": "object"});
+    let formats = [
+        ResponseFormat::Text,
+        ResponseFormat::Json,
+        Schema::new("weather", weather.clone()).into(),
+        Schema::new("weather", weather.clone()).strict(true).into(),
+    ];
+    assert_eq!(
+        serde_json::to_value(&formats).unwrap(),
+        json!([
+            "text",
+            "json",
+            {"schema": {"name": "weather", "schema": weather}},
+            {"schema": {"name": "weather", "schema": weather, "strict": true}}
+        ])
+    );
+
+    // The defaults are left out of a request; anything else is kept.
+    let request = Request::new("m")
+        .tool(Tool::new("lookup", "Look up a value."))
+        .tool_choice(ToolChoice::Required)
+        .response_format(ResponseFormat::Json);
+    let value = serde_json::to_value(&request).unwrap();
+    assert_eq!(value["tool_choice"], "required");
+    assert_eq!(value["response_format"], "json");
+    let back: Request = serde_json::from_value(value).unwrap();
+    assert_eq!(back, request);
+}
+
+#[test]
+fn conformance_requests_use_the_serde_form_of_what_the_answer_must_meet() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/conformance");
+    let mut checked = 0;
+    for dir in ["encoder", "transport"] {
+        for entry in std::fs::read_dir(root.join(dir)).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_none_or(|e| e != "json") {
+                continue;
+            }
+            let case: Value =
+                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            let name = path.file_stem().unwrap().to_string_lossy().into_owned();
+            let calls = case["calls"].as_array().into_iter().flatten();
+            let requests = std::iter::once(&case["request"]).chain(calls.map(|c| &c["request"]));
+            for request in requests {
+                if let Some(choice) = request.get("tool_choice") {
+                    let parsed: ToolChoice = serde_json::from_value(choice.clone())
+                        .unwrap_or_else(|e| panic!("{name}: {choice} {e}"));
+                    assert_eq!(&serde_json::to_value(parsed).unwrap(), choice, "{name}");
+                    checked += 1;
+                }
+                if let Some(format) = request.get("response_format") {
+                    let parsed: ResponseFormat = serde_json::from_value(format.clone())
+                        .unwrap_or_else(|e| panic!("{name}: {format} {e}"));
+                    assert_eq!(&serde_json::to_value(parsed).unwrap(), format, "{name}");
+                    checked += 1;
+                }
+            }
+        }
+    }
+    assert!(checked > 10, "only {checked} found");
+}

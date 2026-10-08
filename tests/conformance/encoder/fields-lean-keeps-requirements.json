@@ -1,0 +1,46 @@
+{
+  "description": "The lean body leaves out the optional fields but keeps what the answer must meet: tool_choice and response_format.",
+  "request": {
+    "model": "m",
+    "reasoning_effort": "low",
+    "include_usage": true,
+    "tools": [
+      {
+        "name": "lookup",
+        "description": "Look up a value.",
+        "input_schema": {
+          "type": "object",
+          "properties": {"value": {"type": "integer"}},
+          "required": ["value"]
+        }
+      }
+    ],
+    "tool_choice": "required",
+    "response_format": "json",
+    "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+  },
+  "options": {"lean": true},
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "lookup",
+            "description": "Look up a value.",
+            "parameters": {
+              "type": "object",
+              "properties": {"value": {"type": "integer"}},
+              "required": ["value"]
+            }
+          }
+        }
+      ],
+      "tool_choice": "required",
+      "response_format": {"type": "json_object"},
+      "messages": [{"role": "user", "content": "hi"}]
+    }
+  }
+}

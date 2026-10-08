@@ -14,7 +14,7 @@ use super::{
     think::ThinkSplitter,
     wire::{
         CHOICES, CONTENT, DELTA, ERROR, FINISH_REASON, FUNCTION, FUNCTION_TYPE, ID, INDEX, MESSAGE,
-        REASONING, REASONING_CONTENT, ROLE, TOOL_CALLS, TYPE,
+        REASONING, REASONING_CONTENT, REFUSAL, ROLE, TOOL_CALLS, TYPE,
     },
 };
 use crate::{
@@ -68,6 +68,10 @@ pub struct Decoder {
     /// An asynchronous content filter blocked something it had let through: the answer's finish
     /// is `ContentFilter`, whatever the model's own.
     filtered: bool,
+    /// The answer came as content, which a refusal may not join.
+    answered: bool,
+    /// The answer came as a refusal: the text is the refusal, and the finish is `Refusal`.
+    refused: bool,
     usage: Option<Usage>,
 }
 
@@ -105,6 +109,8 @@ impl Decoder {
             calls: BTreeMap::new(),
             finish: None,
             filtered: false,
+            answered: false,
+            refused: false,
             usage: None,
         }
     }
@@ -347,7 +353,7 @@ impl Decoder {
             let known = match key.as_str() {
                 _ if value.is_null() => true,
                 ROLE => value.as_str() == Some("assistant"),
-                CONTENT | REASONING_CONTENT | REASONING => value.is_string(),
+                CONTENT | REASONING_CONTENT | REASONING | REFUSAL => value.is_string(),
                 TOOL_CALLS if !value.is_array() => {
                     return Err(protocol("tool_calls is not an array"));
                 }
@@ -359,6 +365,17 @@ impl Decoder {
             }
         }
 
+        // The answer is content or a refusal; a server that sends both contradicts itself.
+        let string = |key: &str| delta.get(key).and_then(Value::as_str).unwrap_or_default();
+        let (content, refusal) = (string(CONTENT), string(REFUSAL));
+        let answered = self.answered || !content.is_empty();
+        let refused = self.refused || !refusal.is_empty();
+        if answered && refused {
+            return Err(protocol("an answer that is both content and a refusal"));
+        }
+
+        (self.answered, self.refused) = (answered, refused);
+
         for (key, source) in [
             (REASONING_CONTENT, ReasoningSource::ReasoningContent),
             (REASONING, ReasoningSource::Reasoning),
@@ -368,8 +385,12 @@ impl Decoder {
             }
         }
 
-        if let Some(text) = delta.get(CONTENT).and_then(Value::as_str) {
-            self.content(text, events);
+        if !content.is_empty() {
+            self.content(content, events);
+        }
+        if !refusal.is_empty() {
+            // The server's own text, with no <think> tags to split.
+            self.text(refusal.to_owned(), events);
         }
 
         if let Some(Value::Array(pieces)) = delta.get(TOOL_CALLS) {
@@ -513,10 +534,11 @@ impl Decoder {
         let finish = self.finish.ok_or_else(|| {
             Error::new(ErrorKind::TruncatedStream).with_detail("[DONE] before a finish reason")
         })?;
-        let finish = if self.filtered {
-            FinishReason::ContentFilter
-        } else {
-            finish
+        let finish = match finish {
+            _ if self.filtered => FinishReason::ContentFilter,
+            // A refusal is the answer however the model stopped, unless a filter stopped it (D35).
+            FinishReason::Stop | FinishReason::Length if self.refused => FinishReason::Refusal,
+            finish => finish,
         };
 
         let mut ids = HashSet::new();
@@ -535,6 +557,9 @@ impl Decoder {
             calls.push(ToolCall::new(call.id, call.name, call.arguments));
         }
 
+        if self.refused && !calls.is_empty() {
+            return Err(protocol("a refusal with tool calls"));
+        }
         if finish != FinishReason::Length && (finish == FinishReason::ToolCalls) == calls.is_empty()
         {
             return Err(protocol("the finish reason does not match the tool calls"));

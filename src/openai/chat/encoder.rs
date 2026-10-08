@@ -11,8 +11,8 @@ use crate::body::{
     not_utf8,
 };
 use crate::{
-    Effort, Error, ErrorKind, Image, Message, Part, ReasoningSource, Request, Role, Source,
-    TextFile, ToolCall,
+    Effort, Error, ErrorKind, Image, Message, Part, ReasoningSource, Request, ResponseFormat, Role,
+    Source, TextFile, ToolCall, ToolChoice,
 };
 
 /// Attachments are read this many bytes at a time. A multiple of 3, so every base64 block but the
@@ -66,7 +66,8 @@ impl Encoder {
     }
 
     /// Leaves out the optional fields, `reasoning_effort` and `stream_options`, for a server
-    /// known to reject them.
+    /// known to reject them. What the answer must meet, `tool_choice` and `response_format`, is
+    /// not optional and stays.
     pub fn lean(mut self, lean: bool) -> Self {
         self.lean = lean;
         self
@@ -98,12 +99,18 @@ impl Encoder {
     /// Encodes `request` without I/O. Every attachment must be in memory; one held as a file
     /// path is [`ErrorKind::Attachment`], and needs `encode_files`.
     pub fn encode(&self, request: &Request) -> Result<Body, Error> {
-        self.build(request, &mut |source, encoding, declared| match source {
-            Source::Bytes(data) => measure_bytes(data, encoding, declared),
-            _ => Err(attachment(
-                "a file attachment needs Encoder::encode_files (feature `client`)",
-            )),
-        })
+        let choice = tool_choice(request)?;
+
+        self.build(
+            request,
+            choice,
+            &mut |source, encoding, declared| match source {
+                Source::Bytes(data) => measure_bytes(data, encoding, declared),
+                _ => Err(attachment(
+                    "a file attachment needs Encoder::encode_files (feature `client`)",
+                )),
+            },
+        )
     }
 
     /// Encodes `request`, first measuring the attachments held as file paths: an image's size,
@@ -112,6 +119,9 @@ impl Encoder {
     /// and must not have changed by then.
     #[cfg(feature = "client")]
     pub async fn encode_files(&self, request: &Request) -> Result<Body, Error> {
+        // A tool choice that cannot be met fails before any file is read.
+        let choice = tool_choice(request)?;
+
         let mut measured = std::collections::VecDeque::new();
         for (source, encoding, declared) in attachments(request) {
             if let Source::Path(path) = source {
@@ -119,19 +129,28 @@ impl Encoder {
             }
         }
 
-        self.build(request, &mut |source, encoding, declared| match source {
-            Source::Bytes(data) => measure_bytes(data, encoding, declared),
-            _ => measured
-                .pop_front()
-                .ok_or_else(|| attachment("an attachment was not measured")),
-        })
+        self.build(
+            request,
+            choice,
+            &mut |source, encoding, declared| match source {
+                Source::Bytes(data) => measure_bytes(data, encoding, declared),
+                _ => measured
+                    .pop_front()
+                    .ok_or_else(|| attachment("an attachment was not measured")),
+            },
+        )
     }
 
-    fn build(&self, request: &Request, measure: &mut Measure<'_>) -> Result<Body, Error> {
+    fn build<'a>(
+        &self,
+        request: &'a Request,
+        tool_choice: Option<WireToolChoice<'a>>,
+        measure: &mut Measure<'_>,
+    ) -> Result<Body, Error> {
         let mut out = Segments::default();
 
         // `{"model":...,"stream":true` -- the object, left open for `messages`.
-        let head = to_json(&Head {
+        out.open_object(&Head {
             model: &request.model,
             stream: true,
             max_tokens: request.max_tokens,
@@ -153,9 +172,9 @@ impl Encoder {
                     },
                 })
                 .collect(),
+            tool_choice,
+            response_format: response_format(&request.response_format),
         })?;
-
-        out.raw(&head[..head.len() - 1]);
         out.raw(br#","messages":["#);
 
         let mut first = true;
@@ -405,7 +424,7 @@ fn assistant(message: &Message, send_reasoning: bool, out: &mut Segments) -> Res
 
     if !calls.is_empty() {
         out.raw(br#","tool_calls":"#);
-        out.raw(&to_json(&calls)?);
+        out.json(&calls)?;
     }
 
     if send_reasoning {
@@ -424,6 +443,43 @@ fn assistant(message: &Message, send_reasoning: bool, out: &mut Segments) -> Res
     Ok(())
 }
 
+/// Whether the model may or must call a tool, checked against the tools the request offers.
+fn tool_choice(request: &Request) -> Result<Option<WireToolChoice<'_>>, Error> {
+    let offers = |name: &str| request.tools.iter().any(|tool| tool.name == name);
+
+    match &request.tool_choice {
+        // The server's default; and with no tools there is nothing to forbid.
+        ToolChoice::Auto => Ok(None),
+        ToolChoice::None if request.tools.is_empty() => Ok(None),
+        ToolChoice::None => Ok(Some(WireToolChoice::Mode("none"))),
+        ToolChoice::Required if request.tools.is_empty() => Err(unsupported(
+            "a tool call is required, and the request offers no tools",
+        )),
+        ToolChoice::Required => Ok(Some(WireToolChoice::Mode("required"))),
+        ToolChoice::Tool(name) if !offers(name) => Err(unsupported(
+            "a call is required of a tool the request does not offer",
+        )),
+        ToolChoice::Tool(name) => Ok(Some(WireToolChoice::Function {
+            kind: FUNCTION_TYPE,
+            function: WireName { name },
+        })),
+    }
+}
+
+fn response_format(format: &ResponseFormat) -> Option<WireFormat<'_>> {
+    match format {
+        ResponseFormat::Text => None,
+        ResponseFormat::Json => Some(WireFormat::JsonObject),
+        ResponseFormat::Schema(schema) => Some(WireFormat::JsonSchema {
+            json_schema: WireSchema {
+                name: &schema.name,
+                schema: &schema.schema,
+                strict: schema.strict,
+            },
+        }),
+    }
+}
+
 fn effort(effort: Effort) -> &'static str {
     match effort {
         Effort::Off => "none",
@@ -432,14 +488,6 @@ fn effort(effort: Effort) -> &'static str {
         Effort::High => "high",
         Effort::XHigh => "xhigh",
     }
-}
-
-fn to_json<T: Serialize>(value: &T) -> Result<Vec<u8>, Error> {
-    serde_json::to_vec(value).map_err(|source| {
-        Error::new(ErrorKind::Unsupported)
-            .with_detail("the request cannot be written as JSON")
-            .with_source(source)
-    })
 }
 
 fn unsupported(detail: &'static str) -> Error {
@@ -458,6 +506,24 @@ impl Segments {
     /// Bytes that are JSON already.
     fn raw(&mut self, bytes: &[u8]) {
         self.pending.extend_from_slice(bytes);
+    }
+
+    /// A value written as JSON.
+    fn json<T: Serialize>(&mut self, value: &T) -> Result<(), Error> {
+        serde_json::to_writer(&mut self.pending, value).map_err(|source| {
+            Error::new(ErrorKind::Unsupported)
+                .with_detail("the request cannot be written as JSON")
+                .with_source(source)
+        })
+    }
+
+    /// An object written as JSON and left open for more members: its closing brace is not
+    /// written.
+    fn open_object<T: Serialize>(&mut self, value: &T) -> Result<(), Error> {
+        self.json(value)?;
+        self.pending.pop();
+
+        Ok(())
     }
 
     /// Text, escaped for the JSON string being written.
@@ -521,11 +587,48 @@ struct Head<'a> {
     stream_options: Option<StreamOptions>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<WireTool<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<WireToolChoice<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_format: Option<WireFormat<'a>>,
 }
 
 #[derive(Serialize)]
 struct StreamOptions {
     include_usage: bool,
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum WireToolChoice<'a> {
+    /// `none` or `required`.
+    Mode(&'static str),
+    /// One tool, by name.
+    Function {
+        #[serde(rename = "type")]
+        kind: &'static str,
+        function: WireName<'a>,
+    },
+}
+
+#[derive(Serialize)]
+struct WireName<'a> {
+    name: &'a str,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum WireFormat<'a> {
+    JsonObject,
+    JsonSchema { json_schema: WireSchema<'a> },
+}
+
+#[derive(Serialize)]
+struct WireSchema<'a> {
+    name: &'a str,
+    schema: &'a Value,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    strict: bool,
 }
 
 #[derive(Serialize)]
@@ -723,6 +826,17 @@ mod tests {
             Encoder::new().encode(&request).unwrap_err().kind(),
             ErrorKind::Attachment
         );
+    }
+
+    #[cfg(feature = "client")]
+    #[tokio::test]
+    async fn a_tool_choice_that_cannot_be_met_fails_before_any_file_is_read() {
+        let request = Request::new("m")
+            .tool_choice(crate::ToolChoice::Required)
+            .message(Message::user("").with(TextFile::path("no-such-file.txt")));
+
+        let error = Encoder::new().encode_files(&request).await.unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::Unsupported);
     }
 
     #[test]

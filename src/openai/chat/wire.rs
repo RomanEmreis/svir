@@ -17,6 +17,7 @@ pub(super) const CONTENT: &str = "content";
 pub(super) const REASONING_CONTENT: &str = "reasoning_content";
 pub(super) const REASONING: &str = "reasoning";
 pub(super) const TOOL_CALLS: &str = "tool_calls";
+pub(super) const REFUSAL: &str = "refusal";
 /// The key of a tool call's name and arguments.
 pub(super) const FUNCTION: &str = "function";
 

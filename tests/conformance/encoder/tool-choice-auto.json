@@ -1,0 +1,40 @@
+{
+  "description": "Letting the model decide is the server's default, so auto is not sent.",
+  "request": {
+    "model": "m",
+    "tools": [
+      {
+        "name": "lookup",
+        "description": "Look up a value.",
+        "input_schema": {
+          "type": "object",
+          "properties": {"value": {"type": "integer"}},
+          "required": ["value"]
+        }
+      }
+    ],
+    "tool_choice": "auto",
+    "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "lookup",
+            "description": "Look up a value.",
+            "parameters": {
+              "type": "object",
+              "properties": {"value": {"type": "integer"}},
+              "required": ["value"]
+            }
+          }
+        }
+      ],
+      "messages": [{"role": "user", "content": "hi"}]
+    }
+  }
+}

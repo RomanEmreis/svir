@@ -120,6 +120,7 @@ accept a `Request` or a `&Request`.
   nothing needed for the next turn can be lost; `.tool_result(id, content)` and
   `.tool_results(results)` answer calls;
 - `.tools(&toolbox)` with anything implementing `Toolbox` (D18), or `.tool(Tool)`;
+- `.tool_choice(ToolChoice)` and `.response_format(format)`: what the answer must meet (D40);
 - `.reasoning(Effort)`, `.max_tokens(n)`, `.temperature(t)`, `.send_reasoning(bool)`.
 
 `Effort` is `Off`, `Low`, `Medium`, `High`, or `XHigh`. Each adapter maps it explicitly: Chat
@@ -572,6 +573,98 @@ size and reads nothing. The declared length is checked where it is used:
 - text in memory is measured anyway, and a declared length that disagrees fails when the body is
   built.
 
+### D40. A tool choice and a response format are requirements, never dropped
+
+Resolves the first two questions of #4. A request says whether the model may call a tool, and
+what shape its answer takes, in types that fit every wire API with tool calling and structured
+output, not in the Chat Completions JSON (O6):
+
+- `ToolChoice` is `Auto` (the model decides; the default), `None` (no call), `Required` (a call
+  of any tool offered), or `Tool(name)` (a call of that tool). Chat Completions and the Responses
+  API have the four as `auto`, `none`, `required`, and a named function; Anthropic Messages as
+  `auto`, `none`, `any`, and `tool`.
+- `ResponseFormat` is `Text` (the default), `Json` (a JSON object of any shape), or a `Schema`:
+  a JSON Schema the answer must match, with a name, which Chat Completions and the Responses API
+  require, and `strict` (D41). `Schema::of::<T>()` derives it from a type under the `schemars`
+  feature and names it after the type, as `Tools::add` derives a tool's input (D18). How an API
+  with no mode for JSON of any shape maps `Json` is settled with its adapter (O6).
+
+The body carries what the request sets (P11). `Auto` and `Text` are every server's default and
+are not sent; neither is `None` in a request that offers no tools, which has nothing to forbid
+and which a server may reject for a tool choice without tools. A requirement that cannot be met
+is not sent at all: a call required of a request that offers no tools, or of a tool it does not
+offer, is `Unsupported` when the request is encoded, as a part a role cannot carry is. It is
+told from the request alone, so it fails before any attachment is read from disk.
+
+They are not optional fields in the sense of D11. `reasoning_effort` and `stream_options` can be
+left out without changing what the answer is: the effort is a hint, and usage is reported or
+not. A tool choice and a response format are what the answer must meet. Without them it is not
+what was asked for, and the caller acts on it as if it were: it runs the tool it required, or
+parses the JSON it asked for. So the lean retry keeps them, a server learned to be strict still
+gets them, and their presence alone triggers no retry. A server that does not take them rejects
+the request, `Unsupported` with its message, and the caller decides what to ask instead.
+
+A server may also take a requirement and not keep it: LM Studio accepts `required` and answers
+without a call. svir does not check the answer against the tool choice, as it does not check it
+against a schema (D41). The completion says what the model did: the caller reads its `calls` as
+it parses its text.
+
+### D41. Structured output is parsed, not validated
+
+Resolves the last question of #4. The decoder does not check an answer against the schema it
+was asked to match. That takes a JSON Schema validator, a heavy dependency for what a type
+already says (D18), and only the caller knows whether an answer that does not fit is an error
+or a reason to ask again. `Completion::parse::<T>()` reads the text into `T` with serde, as
+`ToolCall::parse` reads arguments; an answer the type does not fit is serde's error.
+
+Only a whole answer is parsed, one that finished with `Stop`; any other finish is an error before
+the text is read. Valid JSON is not enough. An answer the output limit cut off can be valid, a
+number at the root cut short for one, and the guidance for structured output is to treat
+`length` as incomplete before reading anything; a refusal (D42) or a filtered answer (D35) is
+not the answer asked for, nor is the text beside tool calls. The error is a serde error too,
+made with `de::Error::custom`, so `parse` keeps `ToolCall::parse`'s signature. A caller that
+wants such text anyway reads it with `serde_json` itself.
+
+Whether the answer keeps to the schema is the server's part. Local servers constrain sampling to
+it. OpenAI and Azure OpenAI guarantee it only in strict mode, which also asks more of the schema:
+every property required, and `additionalProperties: false` on every object. So `strict` is the
+caller's to set, `Schema::strict(true)`, and is sent only then. Always on, it would make a schema
+derived from a type fail on those servers unless the type is written for it; rewritten by svir
+to fit, the schema would no longer say what the type says.
+
+`parse` reads the text alone, never the reasoning. LM Studio holds a reasoning model's reasoning
+to the schema too, and with reasoning on sends the whole JSON as reasoning and no text. Reading
+the reasoning when the text is empty would work there, and would take reasoning for the answer
+everywhere else; implying `reasoning_effort: none` with a format would send what the request did
+not set (P11). The text stays what the server sent (D31), and a caller of such a server asks for
+`Effort::Off` with the format.
+
+*Revised 2026-10-08, in review: `parse` read the text whatever the finish, and an answer the
+output limit cut off was said never to parse.*
+
+### D42. A refusal is its own finish reason, and its text is the answer's
+
+A model may refuse to answer, and say why. Chat Completions sends that in `refusal`, in pieces as
+`content` comes, with `content` null and the finish `stop`; OpenAI does, above all for a
+structured answer it will not give (D40). A refusal is the answer, not input outside the
+protocol: strict mode failed it as `Unsupported`, and lenient mode dropped it and completed with
+no text at all.
+
+It is `FinishReason::Refusal`, and the refusal's text is the completion's `text`, streamed as
+`Event::Text`, as the text before a `ContentFilter` finish is kept (D35). A chat UI shows it with
+no code of its own, and a caller that asked for a format learns from the finish that the text
+does not have it; `parse` fails on it. Anthropic Messages ends a refused answer with a stop
+reason of `refusal`, and the Responses API has a refusal part of its own, so the finish is
+neutral (O6).
+
+- A refusal makes the finish `Refusal` whether the model stopped or the output limit cut it off.
+  A content filter's block is still `ContentFilter`, the stronger statement (D35).
+- Content and a refusal in one answer, in either order, are `Protocol` in both modes: the server
+  contradicts itself about what the answer is (P8). So is a refusal with tool calls.
+- An empty or null `refusal` is no refusal: Azure sends `"refusal": null` on every first delta.
+
+Added to the next request, the refusal is the model's text and goes back as `content`; the
+`refusal` field of an assistant message is not written.
 
 ### P1. Edition 2024; MSRV 1.85
 
@@ -649,9 +742,10 @@ from the one already seen for that index is `Protocol`.
 ### P11. The body carries what the request sets, and nothing implied
 
 `model`, `messages`, and `stream: true` always; everything else (`max_tokens`, `temperature`,
-`reasoning_effort`, `stream_options`, `tool_choice`, `n`) only when the request sets it. Server
-defaults already cover what is left out, and every extra field is one more thing a strict server
-can reject. D21 is the one exception.
+`reasoning_effort`, `stream_options`, `tool_choice`, `response_format`, `n`) only when the
+request sets it. Server defaults already cover what is left out, and every extra field is one
+more thing a strict server can reject. A tool choice or a response format set to the default is
+not sent either (D40). D21 is the one exception.
 
 ### P12. Message layout
 
