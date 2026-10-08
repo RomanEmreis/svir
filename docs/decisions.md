@@ -593,7 +593,8 @@ The body carries what the request sets (P11). `Auto` and `Text` are every server
 are not sent; neither is `None` in a request that offers no tools, which has nothing to forbid
 and which a server may reject for a tool choice without tools. A requirement that cannot be met
 is not sent at all: a call required of a request that offers no tools, or of a tool it does not
-offer, is `Unsupported` when the request is encoded, as a part a role cannot carry is.
+offer, is `Unsupported` when the request is encoded, as a part a role cannot carry is. It is
+told from the request alone, so it fails before any attachment is read from disk.
 
 They are not optional fields in the sense of D11. `reasoning_effort` and `stream_options` can be
 left out without changing what the answer is: the effort is a hint, and usage is reported or
