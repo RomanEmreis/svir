@@ -373,7 +373,7 @@ impl Decoder {
         if answered && refused {
             return Err(protocol("an answer that is both content and a refusal"));
         }
-        
+
         (self.answered, self.refused) = (answered, refused);
 
         for (key, source) in [
