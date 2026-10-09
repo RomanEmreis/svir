@@ -376,11 +376,19 @@ impl Decoder {
 
         (self.answered, self.refused) = (answered, refused);
 
-        for (key, source) in [
-            (REASONING_CONTENT, ReasoningSource::ReasoningContent),
-            (REASONING, ReasoningSource::Reasoning),
+        // A server that fills both keys sends one text twice: it is one piece, kept under
+        // reasoning_content. Different texts are two carriers (D43).
+        let reasoning_content = delta.get(REASONING_CONTENT).and_then(Value::as_str);
+        let reasoning = delta
+            .get(REASONING)
+            .and_then(Value::as_str)
+            .filter(|text| Some(*text) != reasoning_content);
+
+        for (text, source) in [
+            (reasoning_content, ReasoningSource::ReasoningContent),
+            (reasoning, ReasoningSource::Reasoning),
         ] {
-            if let Some(text) = delta.get(key).and_then(Value::as_str) {
+            if let Some(text) = text {
                 self.reasoning(source, text, events);
             }
         }
@@ -731,6 +739,28 @@ mod tests {
         assert_eq!(
             completion(Decoder::strict().push(bare.as_bytes())).timing,
             None
+        );
+    }
+
+    #[test]
+    fn reasoning_under_both_keys_is_one_live_event() {
+        let wire = concat!(
+            "data: {\"choices\":[{\"index\":0,\"delta\":",
+            "{\"reasoning_content\":\"why\",\"reasoning\":\"why\"},\"finish_reason\":null}]}\n\n",
+        );
+        let events = Decoder::strict().push(wire.as_bytes());
+
+        let reasoning: Vec<_> = events
+            .into_iter()
+            .map(Result::unwrap)
+            .filter_map(|event| match event {
+                Event::Reasoning(piece) => Some(piece),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            reasoning,
+            [Reasoning::new(ReasoningSource::ReasoningContent, "why")]
         );
     }
 

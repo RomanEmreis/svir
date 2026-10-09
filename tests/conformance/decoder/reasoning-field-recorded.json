@@ -1,0 +1,20 @@
+{
+  "description": "Recorded from mlx-lm: SSE comments while the prompt is read, reasoning in the reasoning key, the role on every delta, the blank line the server leaves after the reasoning, and usage in a chunk with no choices whose object is chat.completion. Strict mode accepts all of it.",
+  "file": "mlx-lm.sse",
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "stop",
+        "text": "\n\nOne, two, three, four, five.",
+        "reasoning": [
+          {
+            "source": "reasoning",
+            "text": "We need to respond to user: \"Count from one to five.\" Simple. Need final answer likely \"1 2 3 4 5\" or \"One two three four five\". Ensure no extra.\n"
+          }
+        ],
+        "usage": {"input": 58, "output": 57, "total": 115}
+      }
+    },
+    "lenient": "same"
+  }
+}

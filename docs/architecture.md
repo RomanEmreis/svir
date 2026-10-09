@@ -255,8 +255,9 @@ event, and 64 tool calls per response.
 Reasoning arrives in three carriers (see [wire-protocol.md](wire-protocol.md#4-reasoning)):
 `reasoning_content`, `reasoning`, and `<think>...</think>` inside `content`. The decoder emits all
 of them as live `Reasoning` events tagged with their source and also keeps them in the
-completion (P5). The carrier matters when sending reasoning back: a server expects its own field
-back, unchanged. Splitting `<think>` is on by default, and reasoning split out of the tags is never
+completion (P5). The same text under both keys in one delta is one piece, under
+`reasoning_content` (D43). The carrier matters when sending reasoning back: a server expects its
+own field back, unchanged. Splitting `<think>` is on by default, and reasoning split out of the tags is never
 sent back (D23).
 
 Splitting `<think>` is a streaming problem: a marker can be cut by a chunk boundary, so a
@@ -297,7 +298,8 @@ Every request carries the headers svir writes (`content-type` and `accept` on a 
 cannot replace svir's own (D38).
 
 An error response's body is read for the server's message, up to 64 KiB, and waited for only
-300 ms unless the kind of the error depends on it (400, 413, 422).
+300 ms unless the kind of the error depends on it (400, 413, 422). The message is `error.message`,
+`error` when it is a string, `detail` when there is no `error` (D44), or a body that is not JSON.
 
 `client.stream(request)` returns an `EventStream`: a `Stream` that also has its own `next()`, so
 reading it needs no extension trait. It is `Send + 'static`, ends with `Completed` or with an

@@ -404,8 +404,8 @@ is `ContextOverflow` when any of these holds:
 
 - `error.code` or `error.type` is `context_length_exceeded`, `context_window_exceeded`, or
   `exceed_context_size_error`;
-- the message speaks of the `context length`, the `context size`, or the `context window`, in
-  any letter case.
+- the message speaks of the `context length`, the `context size`, the `context window`, or the
+  `context budget`, or of `compacted context`, in any letter case.
 
 This applies to the body of a 400, 413, or 422, and to an error inside the stream (D29), which is
 how LM Studio reports an overflow. On any other status the body does not change the kind: a 500
@@ -414,6 +414,9 @@ that mentions the context is still a transient failure.
 Matching words is looser than matching a code, on purpose. The lists live in one place
 (`openai/chat/overflow.rs`) and grow as servers are observed. A false match turns one
 non-retryable error into another, and the server's own message is kept either way.
+
+*Revised 2026-10-09: `context budget` and `compacted context` added, as mlx-vlm words its
+overflows (wire-protocol 5); its message is its `detail` (D44).*
 
 ### D31. The answer text is what the server sent
 
@@ -665,6 +668,30 @@ neutral (O6).
 
 Added to the next request, the refusal is the model's text and goes back as `content`; the
 `refusal` field of an assistant message is not written.
+
+### D43. One reasoning text under both keys is one piece
+
+mlx-vlm sends every piece of reasoning under `reasoning_content` and again under `reasoning`, its
+alias for it, in the same delta. Read as two carriers (P5), the reasoning arrived twice: two live
+events for every piece, and two copies in the completion.
+
+The same text under both keys in one delta is one piece of reasoning, emitted and kept once under
+`reasoning_content`, and sent back under it (2.2 in wire-protocol); a server that sends both
+takes either. Different texts in one delta are two carriers, as before: no server was seen to
+send them, and nothing would tell which one to drop. The comparison is per delta, so it does not
+depend on chunking (P9).
+
+### D44. A body with no `error` is read for its `detail`
+
+D19 keeps the server's own message. mlx-vlm reports no `error`: its errors are
+`{"detail": "<message>"}`, and a body it cannot read is 422 with a list of validation errors,
+each with its message under `msg`. Read for `error` alone, its errors had no message at all, and
+an overflow it reported only in words was not recognized (D30).
+
+When a JSON body has no `error`, its `detail` is the server's message: the string, or the first
+validation error's `msg`. The first error is the one a person reads first; the rest stay on the
+server's side. An `error`, when present, wins. The message is then held to D30 like any other,
+on the same statuses.
 
 ### P1. Edition 2024; MSRV 1.85
 

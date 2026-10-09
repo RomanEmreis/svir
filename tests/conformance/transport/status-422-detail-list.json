@@ -1,0 +1,13 @@
+{
+  "description": "A 422 whose detail is a list of validation errors, as mlx-vlm's server sends for a body it cannot read: the first error's msg is the server's message (D44).",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 422,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"detail\":[{\"type\":\"list_type\",\"loc\":[\"body\",\"messages\"],\"msg\":\"Input should be a valid list\",\"input\":\"hi\"},{\"type\":\"missing\",\"loc\":[\"body\",\"model\"],\"msg\":\"Field required\",\"input\":{}}]}"
+    }
+  ],
+  "calls": [{"expect": {"error": "unsupported", "retryable": false, "message": "Input should be a valid list"}}],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.1.6
+
+### Fixed
+
+* **Reasoning sent under both `reasoning_content` and `reasoning` arrives
+  once.** mlx-vlm sends every piece of reasoning under both keys; it was two
+  `Event::Reasoning` for each piece, and two copies in the completion. The
+  same text under both keys in one delta is now one piece, from
+  `ReasoningSource::ReasoningContent`. Different texts are still two
+  carriers (D43).
+
+### Changed
+
+* **A server's message is read from `detail` when its error body has no
+  `error`**, as mlx-vlm's are: the string, or the first validation error's
+  `msg`. It is what `error.server_message()` returns, and a message there
+  that speaks of a context overflow makes the error
+  `ErrorKind::ContextOverflow` (D44).
+* **More overflows are recognized by their words**: a message that speaks of
+  the `context budget` or of `compacted context` is
+  `ErrorKind::ContextOverflow` on 400, 413, and 422, and inside the stream,
+  as mlx-vlm reports a conversation longer than its context limit (D30).
+
 ## 0.1.5
 
 ### Added
