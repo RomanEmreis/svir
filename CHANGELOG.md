@@ -16,16 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `ReasoningSource::ReasoningContent`. Different texts are still two
   carriers (D43).
 * **A call of a named function finishes with `FinishReason::ToolCalls`.**
-  OpenAI and vLLM finish it with `stop`, which was `ErrorKind::Protocol`, so
-  `ToolChoice::tool(name)` failed against the servers that keep it. Calls
-  with a `stop` finish are now an answer of calls in both modes (D45).
+  vLLM finishes it with `stop`, as OpenAI has been reported to; that was
+  `ErrorKind::Protocol`, so `ToolChoice::tool(name)` failed against the
+  servers that keep it. Calls with a `stop` finish are now an answer of
+  calls in both modes (D45).
 
 ### Changed
 
 * **A server's message is read from `detail` when its error body has no
   `error`**, as mlx-vlm's are: the string, or the first validation error's
-  `msg`. It is what `error.server_message()` returns, and a message there
-  that speaks of a context overflow makes the error
+  `msg`. It is what `error.server_message()` returns, and on 400, 413, and
+  422 a message there that speaks of a context overflow makes the error
   `ErrorKind::ContextOverflow` (D44).
 * **More overflows are recognized by their words**: a message that speaks of
   the `context budget` or of `compacted context` is
