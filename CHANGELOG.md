@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   same text under both keys in one delta is now one piece, from
   `ReasoningSource::ReasoningContent`. Different texts are still two
   carriers (D43).
+* **A call of a named function finishes with `FinishReason::ToolCalls`.**
+  OpenAI and vLLM finish it with `stop`, which was `ErrorKind::Protocol`, so
+  `ToolChoice::tool(name)` failed against the servers that keep it. Calls
+  with a `stop` finish are now an answer of calls in both modes (D45).
 
 ### Changed
 

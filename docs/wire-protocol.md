@@ -7,8 +7,10 @@ and observed server behavior. How svir handles each fact is in [architecture.md]
 What is said of mlx-lm and mlx-vlm was observed with mlx-lm 0.32.0 and mlx-vlm 0.7.6 serving
 Qwen3.8 27B (MLX, 4-bit), a model that reasons, calls tools, and sees images. What is said of
 llama.cpp was observed with build b11429 serving Muse Glimmer 30B (GGUF, Q4_K_M) in a 16384-token
-context, with and without the model's image projector. What was read in a server's code instead
-says so.
+context, with and without the model's image projector. What is said of vLLM was observed with
+vLLM 0.30.0 on Apple Silicon (the vllm-metal 0.30.0 platform plugin) serving the same Qwen3.8
+model, with and without its reasoning and tool-call parsers. What was read in a server's code
+instead says so.
 
 ## 1. Endpoints and base URL
 
@@ -107,12 +109,19 @@ hello. With `none`, asked to open a locker, the model wrote a call all the same,
 parser failed the stream (3.5). A value outside the protocol is rejected with 400 and
 `{"error":{"code":400,"message":"Invalid tool_choice: bogus","type":"invalid_request_error"}}`.
 
+vLLM calls tools only with a tool-call parser (`--enable-auto-tool-choice --tool-call-parser`).
+Without one, a request with tools and no `tool_choice` is rejected with 400 and
+`{"error":{"message":"\"auto\" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set","type":"BadRequestError","param":null,"code":400}}`,
+and `required` or a named function with 400 and
+`tool_choice=function "open_locker" requires --tool-call-parser to be set`; `none` is taken.
+With the parser it keeps all four, and finishes a call of a named function with `stop` (3.3).
+
 A model without tool support may ignore tools or fail. Tool calling needs a tool-capable model
 and must be verified per model.
 
 ### 2.5 Optional fields
 
-LM Studio, mlx-lm, mlx-vlm, and llama.cpp accept `reasoning_effort` and `stream_options`. A
+LM Studio, mlx-lm, mlx-vlm, llama.cpp, and vLLM accept `reasoning_effort` and `stream_options`. A
 stricter server may reject the whole request with 400 or 422 because of either field. Nothing was
 generated in that case, so retrying without them is safe.
 
@@ -125,7 +134,11 @@ What they do with them:
   `--enable-thinking`, the model does not reason; with `low` it does.
 - llama.cpp takes the effort, and the model reasoned at `none` as at `high`: its chat template
   reads its own variable, `reasoning_strength`, and not `reasoning_effort`.
-- All three send the usage chunk `stream_options` asks for.
+- vLLM hands the effort to the chat template. With Qwen3.8's, `none` turned reasoning off, `low`
+  was taken, and `high`, which the template does not name, was rejected with 400:
+  "Unexpected reasoning effort high. Supported types are xhigh (default), medium, and low."
+  Sent again without the field, the request gets the template's default, `xhigh`.
+- All of them send the usage chunk `stream_options` asks for.
 
 ### 2.6 Structured output
 
@@ -152,7 +165,7 @@ What they do with them:
   and open in LM Studio's tracker (#1698, #1773, #1971), for GGUF and MLX models alike.
 - mlx-lm reads no `response_format`: asked for the locker schema, the model answered with a
   Markdown table. mlx-vlm keeps `json_schema` (the answer parsed) and takes `json_object`.
-  llama.cpp keeps `json_schema`.
+  llama.cpp and vLLM keep `json_schema`.
 - Otherwise the answer arrives as ordinary `content` deltas. An answer cut off by `length` is
   incomplete and may still be valid JSON: a number at the root cut short, for one. The guide
   to structured output says to treat `length` as incomplete before parsing.
@@ -183,11 +196,12 @@ What they do with them:
 - Delta keys: `role` (`"assistant"`, first chunk), `content`, `reasoning_content`, `reasoning`,
   `refusal`, `tool_calls`. Keys can be present with `null`. Other keys (`audio`, deprecated
   `function_call`) are features outside this protocol subset.
-- llama.cpp's first delta is `{"role":"assistant","content":null}`. mlx-lm sends `role` on
-  every delta. mlx-vlm sends every key of its message type on every
-  delta, `null` when unused, `tool_call_id` and `name` among them, and adds `logprobs: null` to
-  the choice and `usage: null` and `timings` (generation speed) to the chunk
-  (`tests/conformance/decoder/mlx-vlm.sse`).
+- llama.cpp's first delta is `{"role":"assistant","content":null}`, vLLM's
+  `{"role":"assistant","content":""}`. vLLM adds `prompt_token_ids` and `prompt_text` to the
+  first chunk and `token_ids` to the choice, all `null`. mlx-lm sends `role` on every delta.
+  mlx-vlm sends every key of its message type on every delta, `null` when unused, `tool_call_id`
+  and `name` among them, and adds `logprobs: null` to the choice and `usage: null` and `timings`
+  (generation speed) to the chunk (`tests/conformance/decoder/mlx-vlm.sse`).
 - `refusal` is the model's refusal to answer, in place of `content`: a string, in pieces as
   `content` comes, with `content` null and the finish `stop`. OpenAI sends it above all when it
   will not give an answer in the format asked for (2.6). Azure sends `"refusal": null` on its
@@ -211,7 +225,9 @@ Tool calls arrive in pieces and must be assembled:
 - A complete response has contiguous indices from 0, a non-empty unique `id` and a non-empty name
   for every call.
 - `finish_reason` is `tool_calls` exactly when there are calls, except for `length`, which can
-  cut off either.
+  cut off either, and for a call of the function the request named: OpenAI and vLLM finish it
+  with `stop` (`tests/conformance/decoder/vllm-named-tool.sse`), and `tool_calls` for `auto` and
+  `required` (D45).
 - Arguments are only meaningful once the stream is complete. A call is executable only after the
   finish reason and `[DONE]`; a stream cut before `[DONE]` may have incomplete arguments.
 
@@ -244,7 +260,8 @@ Result: `call-a` is `lookup({"value":1})`, `call-b` is `lookup({"value":2})`.
 - mlx-lm's usage chunk has `object: "chat.completion"`, not `chat.completion.chunk`. mlx-lm and
   mlx-vlm report `prompt_tokens_details.cached_tokens` and no reasoning tokens; the reasoning is
   counted in `completion_tokens`, and so does llama.cpp. The usage chunks of mlx-vlm and llama.cpp
-  add `timings`, with prompt and generation speed, and mlx-vlm's peak memory.
+  add `timings`, with prompt and generation speed, and mlx-vlm's peak memory. vLLM with its
+  reasoning parser reports `completion_tokens_details.reasoning_tokens`.
 
 ### 3.5 Errors inside the stream
 
@@ -346,13 +363,19 @@ Three carriers exist:
 | Carrier | Where | Sent back as |
 | --- | --- | --- |
 | `reasoning_content` | Delta key; LM Studio, llama.cpp, and servers with a reasoning parser | The same key on the assistant message |
-| `reasoning` | Delta key; some servers | The same key on the assistant message |
+| `reasoning` | Delta key; mlx-lm, vLLM with its reasoning parser, and some other servers | The same key on the assistant message |
 | `<think>...</think>` | Inside `content`, from servers without a reasoning parser, or with it turned off (llama.cpp's `--reasoning-format none`) | Nothing in a request field; svir does not send it back (D23 in [decisions.md](decisions.md)) |
 
 mlx-lm separates the reasoning of a model whose think markers its tokenizer knows, as it does for
 Qwen3.8, and sends it as `reasoning`. mlx-vlm sends every piece of reasoning twice in one delta,
 the same text under `reasoning_content` and under `reasoning`, its alias for it: one text, not
 two (D43).
+
+A template can open the tag itself: Qwen3.8's ends the prompt with `<think>`. A server without a
+reasoning parser then sends the reasoning as `content`, with a closing marker and no opening one.
+vLLM without `--reasoning-parser` sent
+`"The user wants me to count from one to five, spelling out the numbers in words. This is straightforward.\n</think>\n\nOne, two, three, four, five."`.
+svir keeps that text as the answer (D23); the server's reasoning parser separates it.
 
 Treating inline `<think>` as answer text shows the reasoning to the user as the answer, and sends
 it back to the model on every turn. The markers can be split across chunks anywhere, for example
@@ -387,6 +410,7 @@ Servers agree on no single sign of a context overflow:
 | LM Studio | Status 200 and an `event: error` inside the stream (3.5), with only a message: "...greater than the context length..." |
 | mlx-vlm | Only with a context limit set (`MAX_KV_SIZE` in its environment): 400 with only a `detail`, in several wordings. "Protected conversation exceeds the available context budget." when the last message alone does not fit; "Output reservation leaves no room for compacted context." when `max_tokens` alone leaves no room |
 | mlx-lm | Has no context limit to set, and its code checks none |
+| vLLM | 400 with a numeric `error.code`, `error.type` of `BadRequestError`, `param` of `input_tokens`, and "This model's maximum context length is 262144 tokens. However, you requested 0 output tokens and your prompt contains at least 262145 input tokens, ...". A `max_tokens` above the model's length is 400 with `param` of `max_tokens` and "max_tokens=300000 cannot be greater than max_model_len=max_total_tokens=262144": a parameter rejected, not an overflow |
 
 mlx-vlm counts `max_tokens` into the limit, its own `--max-tokens` for a request that sets none:
 with `--max-tokens 8192` and `MAX_KV_SIZE=4096`, every request that sets no `max_tokens` was
@@ -420,6 +444,9 @@ embedding, reranking, speech, and image models next to chat models. There is no 
 telling them apart; the practical filter is a name heuristic (`embed`, `rerank`, `bge`, `clip`,
 `whisper`, `tts`, `asr`, `speech`, `audio`, `image`, `flux`, `sdxl`, `diffusion`).
 
+vLLM lists its model under `--served-model-name`, with `max_model_len`, `owned_by: "vllm"`, and
+the path it was loaded from as `root`.
+
 llama.cpp lists its one model under the path it was loaded from, with `meta` (`n_ctx`,
 `n_ctx_train`, and more) and `architecture.input_modalities`, and the same model again in a
 `models` array of another shape.
@@ -438,4 +465,6 @@ Sources: [LM Studio Chat Completions](https://lmstudio.ai/docs/developer/openai-
 [Azure OpenAI content streaming](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/content-streaming),
 [Azure content filtering](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/concepts/content-filter),
 [mlx-lm server](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/SERVER.md),
-[mlx-vlm](https://github.com/Blaizzy/mlx-vlm).
+[mlx-vlm](https://github.com/Blaizzy/mlx-vlm),
+[vllm-metal](https://vllm.ai/blog/2026-09-22-vllm-metal-v0-28-0),
+[OpenAI: a call of a named function finished with stop](https://community.openai.com/t/function-call-with-finish-reason-of-stop/437226).

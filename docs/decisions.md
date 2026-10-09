@@ -302,6 +302,13 @@ that inline the tags read no reasoning field in a request, and the chat template
 drop earlier reasoning from the history anyway; putting it back into the text would only spend
 context. This is a documented rule, not a silent loss.
 
+A `</think>` with no `<think>` before it is text. A chat template that opens the tag in the
+prompt leaves only the closing marker in the answer, after the reasoning; by then the reasoning
+has been delivered as text, and events are not taken back. Such a server needs its own reasoning
+parser (wire-protocol 4).
+
+*Revised 2026-10-09: the closing marker alone, seen from vLLM without its reasoning parser.*
+
 ### D24. An assistant message with tool calls and no text has empty-string content
 
 Resolves O11. `"content": ""`, not `null`. The chat templates of many local models join `content`
@@ -692,6 +699,21 @@ When a JSON body has no `error`, its `detail` is the server's message: the strin
 validation error's `msg`. The first error is the one a person reads first; the rest stay on the
 server's side. An `error`, when present, wins. The message is then held to D30 like any other,
 on the same statuses.
+
+### D45. Calls with a `stop` finish are an answer of calls
+
+wire-protocol 3.3 has a server finish with `tool_calls` exactly when there are calls, and svir
+held it to that: calls with a `stop` finish were `Protocol` in both modes. OpenAI and vLLM finish
+with `stop` when the request named the function to call (`ToolChoice::tool(name)`, D40), and with
+`tool_calls` for `auto` and `required`. A call required by name failed against exactly the
+servers that keep the requirement.
+
+Calls with a `stop` finish are an answer of calls: the completion carries them, and its finish is
+`ToolCalls`, in both modes. The calls are complete, since the finish and `[DONE]` both arrived,
+and a caller's loop goes on telling an answer of calls by its finish. The finish is a fact about
+the answer, not about the server's wording of it. A `tool_calls` finish with no calls, and calls
+with a `content_filter` finish, are still `Protocol`: the first has nothing to run, and in the
+second a filter may have cut a call short (D35).
 
 ### P1. Edition 2024; MSRV 1.85
 

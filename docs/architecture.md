@@ -229,14 +229,15 @@ Enforced the same way in both modes (P8):
 | Wire bytes, event bytes, or tool calls over limit | `ResponseLimit` |
 | End of stream, or `[DONE]`, before a finish reason; end of stream before `[DONE]` | `TruncatedStream` |
 | Tool calls with duplicate or changing IDs, missing IDs or names, or non-contiguous indices | `Protocol` |
-| `tool_calls` finish without calls, or calls with a `stop` or `content_filter` finish | `Protocol` |
+| `tool_calls` finish without calls, or calls with a `content_filter` finish | `Protocol` |
 | Content and a refusal in one answer, or a refusal with tool calls (D42) | `Protocol` |
 | A finish reason other than `stop`, `tool_calls`, `length`, and `content_filter` (D35) | `Unsupported` |
 | Content after the finish reason (D35) | `Unsupported` |
 | An annotation from an asynchronous content filter with a finish reason other than `content_filter` (D35) | `Unsupported` |
 
 Two SSE details are framing, not leniency, and hold in both modes: several `data` lines in one
-event join with a newline, and both `reasoning_content` and `reasoning` are reasoning.
+event join with a newline, and both `reasoning_content` and `reasoning` are reasoning. Calls with
+a `stop` finish are an answer of calls, finished with `ToolCalls` in both modes (D45).
 
 A prompt report, a chunk with an empty `choices` array and `prompt_filter_results` (or the older
 `prompt_annotations`), is known input: it carries nothing of the answer and is skipped whole in

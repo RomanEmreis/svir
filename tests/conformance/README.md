@@ -9,7 +9,7 @@ on an open decision lists it in `open`.
 
 | Directory | Covers | Status |
 | --- | --- | --- |
-| `decoder/` | SSE framing, deltas, reasoning, refusals, tool calls, usage, limits, errors inside the stream, strict and lenient | 80 cases, run by `tests/conformance_decoder.rs` |
+| `decoder/` | SSE framing, deltas, reasoning, refusals, tool calls, usage, limits, errors inside the stream, strict and lenient | 81 cases, run by `tests/conformance_decoder.rs` |
 | `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, tool choice and response format, admission | 39 cases, run by `tests/conformance_encoder.rs` |
 | `transport/` | Authentication, extra headers, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 58 cases, run by `tests/conformance_transport.rs` |
 
@@ -103,6 +103,7 @@ runner skips it.
 | `mlx-lm.sse` | Recorded from mlx-lm: SSE comments while the prompt is read, reasoning in the `reasoning` key, the role on every delta, `stop` finish, usage in a chunk with no choices whose `object` is `chat.completion`. The home directory in the model path is replaced. |
 | `mlx-vlm.sse` | Recorded from mlx-vlm: every reasoning delta carries the same text under `reasoning_content` and `reasoning`, every delta carries all its keys, `null` when unused, and every chunk adds `timings`; `stop` finish, usage chunk with no choices. The home directory in the model path is replaced. |
 | `llama-cpp-error.sse` | Recorded from llama.cpp: reasoning in `reasoning_content`, then an error object with a numeric `code` and type `server_error` where the server's parser failed, and no `[DONE]`. The home directory in the model path is replaced. |
+| `vllm-named-tool.sse` | Recorded from vLLM with its reasoning and tool-call parsers, asked to call a named function: reasoning in `reasoning`, one call, a `stop` finish, usage with reasoning tokens. |
 
 ## Requests
 

@@ -568,6 +568,13 @@ impl Decoder {
         if self.refused && !calls.is_empty() {
             return Err(protocol("a refusal with tool calls"));
         }
+
+        // OpenAI and vLLM finish a call of the function the request named with stop: an answer
+        // that is calls finishes with them all the same (D45).
+        let finish = match finish {
+            FinishReason::Stop if !calls.is_empty() => FinishReason::ToolCalls,
+            finish => finish,
+        };
         if finish != FinishReason::Length && (finish == FinishReason::ToolCalls) == calls.is_empty()
         {
             return Err(protocol("the finish reason does not match the tool calls"));
