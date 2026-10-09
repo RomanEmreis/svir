@@ -1,0 +1,42 @@
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"role":"assistant","content":null}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"Open"}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" locker"}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" "}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"7"}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":".\n\n"}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"We"}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" need"}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" to"}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" open"}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" locker"}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" "}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"7"}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"."}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" Use"}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" open"}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"_l"}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"ocker"}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":" tool"}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"reasoning_content":"."}}],"created":1791560180,"id":"chatcmpl-AbbVo3wIF1cCZDJKdQLxjwn8OY5t1Zbj","model":"/Users/me/.lmstudio/models/lmstudio-community/Muse-Glimmer-30B-GGUF/muse-glimmer-30B-kquant-17gb.gguf","system_fingerprint":"b11429-d81235049","object":"chat.completion.chunk"}
+
+data: {"error":{"code":500,"message":"The model produced output that does not match the expected peg-native format","type":"server_error"}}
+

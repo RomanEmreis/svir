@@ -9,7 +9,7 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
    results, events and completions, usage and timing, the error taxonomy, `Limits`, `Mode`, and
    `Think`. Their serde form is pinned against the conformance notation.
 3. **Decoder.** Done: `svir::openai::chat::Decoder` with SSE framing, tool-call assembly,
-   limits, `<think>` splitting, live reasoning, strict and lenient modes, and timing. All 79 decoder
+   limits, `<think>` splitting, live reasoning, strict and lenient modes, and timing. All 80 decoder
    cases pass in `tests/conformance_decoder.rs`.
 4. **Encoder.** Done: `svir::openai::chat::Encoder` and `Body`, with the exact length,
    attachments from memory and from disk, tools, tool calls and results, reasoning sent back, and
@@ -30,7 +30,8 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
    an image and a text file, an output limit, cancellation, a deadline. Run against LM Studio, it
    found the `event: error` event (wire-protocol 3.5) and led to D29-D31. Run against mlx-lm
    and mlx-vlm, it found reasoning sent twice and errors reported in `detail`, and led to D43
-   and D44. HTTPS was exercised by hand against public endpoints.
+   and D44. Run against llama.cpp, it confirmed how D30 reads its overflow. HTTPS was exercised
+   by hand against public endpoints.
 9. **First consumer.** A chat backend moves over; its existing tests must pass unchanged. An agent
    engine follows when convenient.
 10. **`testing`.** The scripted server and scripted event streams, published for callers' tests.
@@ -40,7 +41,7 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
 The suite is data: see [tests/conformance](../tests/conformance/README.md) for the format. It is
 written for all three components:
 
-- `decoder/`: 79 cases. Framing, reasoning and `<think>` splitting, refusals, tool-call assembly,
+- `decoder/`: 80 cases. Framing, reasoning and `<think>` splitting, refusals, tool-call assembly,
   usage, limits, errors inside the stream, and strict and lenient outcomes for each.
 - `encoder/`: 39 cases. Content layout, attachments at every size around the block size, exact
   length and repeatability, declared escaped lengths, reasoning and tool round trips, failed tool

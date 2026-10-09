@@ -1,0 +1,15 @@
+{
+  "description": "Recorded from llama.cpp: the model reasons, then writes a tool call while tool_choice is none, and the server's parser fails. An error object with a numeric code and type server_error ends the stream, with no [DONE]. The server failed while answering, and the reasoning before it is partial (D29).",
+  "file": "llama-cpp-error.sse",
+  "expect": {
+    "strict": {
+      "error": "server",
+      "partial": {
+        "text": "",
+        "reasoning": "Open locker 7.\n\nWe need to open locker 7. Use open_locker tool."
+      },
+      "message": "The model produced output that does not match the expected peg-native format"
+    },
+    "lenient": "same"
+  }
+}
