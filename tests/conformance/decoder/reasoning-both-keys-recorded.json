@@ -1,0 +1,20 @@
+{
+  "description": "Recorded from mlx-vlm: every reasoning delta carries the same text under reasoning_content and reasoning, and every other delta field as null. The reasoning is one piece under reasoning_content, not two copies (D43).",
+  "file": "mlx-vlm.sse",
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "stop",
+        "text": "One, two, three, four, five.",
+        "reasoning": [
+          {
+            "source": "reasoning_content",
+            "text": "The user wants me to count from one to five using words (not numerals). This is straightforward.\n"
+          }
+        ],
+        "usage": {"input": 49, "output": 35, "total": 84}
+      }
+    },
+    "lenient": "same"
+  }
+}

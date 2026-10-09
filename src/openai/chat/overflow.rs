@@ -15,8 +15,14 @@ const NAMES: [&str; 3] = [
 ];
 
 /// What a server that names nothing says about it, in lowercase. Every server observed speaks of
-/// the context's length, size, or window.
-const PHRASES: [&str; 3] = ["context length", "context size", "context window"];
+/// the context's length, size, window, or budget, or of compacted context.
+const PHRASES: [&str; 5] = [
+    "context length",
+    "context size",
+    "context window",
+    "context budget",
+    "compacted context",
+];
 
 /// Whether an error the server reported is a context overflow. `error` is its error object, or
 /// its message alone.
@@ -66,6 +72,8 @@ mod tests {
             "The number of tokens to keep from the initial prompt is greater than the context length.",
             "the request exceeds the available context size, try increasing it",
             "Input exceeds the Context Window of this model",
+            "Protected conversation exceeds the available context budget.",
+            "Output reservation leaves no room for compacted context.",
         ] {
             assert!(is_overflow(&json!({"message": message})), "{message}");
             assert!(is_overflow(&json!(message)), "{message}");

@@ -16,6 +16,11 @@ const RETRY_AFTER_LIMIT: Duration = Duration::from_secs(30);
 /// The `error.code` of a prompt the server's content filter blocked.
 const FILTERED: &str = "content_filter";
 
+/// Where a server that reports no `error` says what went wrong, and the message of each
+/// validation error when it is a list of them (D44).
+const DETAIL: &str = "detail";
+const DETAIL_MESSAGE: &str = "msg";
+
 /// The media type of an answer stream.
 pub(crate) const EVENT_STREAM: &str = "text/event-stream";
 
@@ -30,10 +35,12 @@ pub(crate) fn classify(status: u16, retry_after: Option<&str>, body: &[u8]) -> E
     let parsed = serde_json::from_slice::<Value>(body).ok();
     let reported = parsed.as_ref().and_then(|body| body.get(ERROR));
 
-    // The server's own words: the message of a JSON error, or a plain-text body as it is.
+    // The server's own words: the message of a JSON error, its detail when it reports no error,
+    // or a plain-text body as it is.
     let message = match &parsed {
-        Some(_) => reported
-            .and_then(|error| error.get(MESSAGE).or(Some(error)))
+        Some(body) => reported
+            .map(|error| error.get(MESSAGE).unwrap_or(error))
+            .or_else(|| detail(body))
             .and_then(Value::as_str)
             .map(str::to_owned),
         None => std::str::from_utf8(body)
@@ -79,6 +86,15 @@ pub(crate) fn classify(status: u16, retry_after: Option<&str>, body: &[u8]) -> E
     match message.filter(|message| !message.is_empty()) {
         Some(message) => error.with_server_message(message),
         None => error,
+    }
+}
+
+/// What a body with no `error` says in its `detail`: a message, or the first of its validation
+/// errors (D44).
+fn detail(body: &Value) -> Option<&Value> {
+    match body.get(DETAIL)? {
+        Value::Array(errors) => errors.first()?.get(DETAIL_MESSAGE),
+        detail => Some(detail),
     }
 }
 
@@ -175,6 +191,31 @@ mod tests {
             "the request or the response uses something svir cannot represent: HTTP 404"
         );
         assert_eq!(classify(500, None, b"").server_message(), None);
+    }
+
+    #[test]
+    fn a_detail_is_the_servers_words_when_there_is_no_error() {
+        let message = |status, body: &str| {
+            classify(status, None, body.as_bytes())
+                .server_message()
+                .map(str::to_owned)
+        };
+
+        let said = r#"{"detail":"Invalid tool_choice."}"#;
+        let listed = r#"{"detail":[{"loc":["body"],"msg":"Field required"},{"msg":"second"}]}"#;
+        assert_eq!(message(400, said).as_deref(), Some("Invalid tool_choice."));
+        assert_eq!(message(422, listed).as_deref(), Some("Field required"));
+        assert_eq!(message(422, r#"{"detail":[]}"#), None);
+        assert_eq!(message(400, r#"{"detail":{"msg":"x"}}"#), None);
+
+        // An error, when there is one, is what the server reported.
+        let both = r#"{"error":{"message":"from error"},"detail":"from detail"}"#;
+        assert_eq!(message(400, both).as_deref(), Some("from error"));
+
+        let overflow =
+            r#"{"detail":"Protected conversation exceeds the available context budget."}"#;
+        assert_eq!(kind(400, overflow), ErrorKind::ContextOverflow);
+        assert_eq!(kind(400, said), ErrorKind::Unsupported);
     }
 
     #[test]

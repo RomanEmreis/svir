@@ -1,0 +1,21 @@
+{
+  "description": "A 400 whose body says what went wrong in detail, not in error, as mlx-vlm's server does: the detail is the server's message (D44).",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 400,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"detail\":\"Invalid tool_choice. Expected 'none', 'auto', 'required', or a specific function.\"}"
+    }
+  ],
+  "calls": [
+    {
+      "expect": {
+        "error": "unsupported",
+        "retryable": false,
+        "message": "Invalid tool_choice. Expected 'none', 'auto', 'required', or a specific function."
+      }
+    }
+  ],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

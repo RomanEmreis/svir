@@ -302,6 +302,13 @@ that inline the tags read no reasoning field in a request, and the chat template
 drop earlier reasoning from the history anyway; putting it back into the text would only spend
 context. This is a documented rule, not a silent loss.
 
+A `</think>` with no `<think>` before it is text. A chat template that opens the tag in the
+prompt leaves only the closing marker in the answer, after the reasoning; by then the reasoning
+has been delivered as text, and events are not taken back. Such a server needs its own reasoning
+parser (wire-protocol 4).
+
+*Revised 2026-10-09: the closing marker alone, seen from vLLM without its reasoning parser.*
+
 ### D24. An assistant message with tool calls and no text has empty-string content
 
 Resolves O11. `"content": ""`, not `null`. The chat templates of many local models join `content`
@@ -404,8 +411,8 @@ is `ContextOverflow` when any of these holds:
 
 - `error.code` or `error.type` is `context_length_exceeded`, `context_window_exceeded`, or
   `exceed_context_size_error`;
-- the message speaks of the `context length`, the `context size`, or the `context window`, in
-  any letter case.
+- the message speaks of the `context length`, the `context size`, the `context window`, or the
+  `context budget`, or of `compacted context`, in any letter case.
 
 This applies to the body of a 400, 413, or 422, and to an error inside the stream (D29), which is
 how LM Studio reports an overflow. On any other status the body does not change the kind: a 500
@@ -414,6 +421,9 @@ that mentions the context is still a transient failure.
 Matching words is looser than matching a code, on purpose. The lists live in one place
 (`openai/chat/overflow.rs`) and grow as servers are observed. A false match turns one
 non-retryable error into another, and the server's own message is kept either way.
+
+*Revised 2026-10-09: `context budget` and `compacted context` added, as mlx-vlm words its
+overflows (wire-protocol 5); its message is its `detail` (D44).*
 
 ### D31. The answer text is what the server sent
 
@@ -665,6 +675,45 @@ neutral (O6).
 
 Added to the next request, the refusal is the model's text and goes back as `content`; the
 `refusal` field of an assistant message is not written.
+
+### D43. One reasoning text under both keys is one piece
+
+mlx-vlm sends every piece of reasoning under `reasoning_content` and again under `reasoning`, its
+alias for it, in the same delta. Read as two carriers (P5), the reasoning arrived twice: two live
+events for every piece, and two copies in the completion.
+
+The same text under both keys in one delta is one piece of reasoning, emitted and kept once under
+`reasoning_content`, and sent back under it (2.2 in wire-protocol); a server that sends both
+takes either. Different texts in one delta are two carriers, as before: no server was seen to
+send them, and nothing would tell which one to drop. The comparison is per delta, so it does not
+depend on chunking (P9).
+
+### D44. A body with no `error` is read for its `detail`
+
+D19 keeps the server's own message. mlx-vlm reports no `error`: its errors are
+`{"detail": "<message>"}`, and a body it cannot read is 422 with a list of validation errors,
+each with its message under `msg`. Read for `error` alone, its errors had no message at all, and
+an overflow it reported only in words was not recognized (D30).
+
+When a JSON body has no `error`, its `detail` is the server's message: the string, or the first
+validation error's `msg`. The first error is the one a person reads first; the rest stay on the
+server's side. An `error`, when present, wins. The message is then held to D30 like any other,
+on the same statuses.
+
+### D45. Calls with a `stop` finish are an answer of calls
+
+wire-protocol 3.3 has a server finish with `tool_calls` exactly when there are calls, and svir
+held it to that: calls with a `stop` finish were `Protocol` in both modes. OpenAI and vLLM finish
+with `stop` when the request named the function to call (`ToolChoice::tool(name)`, D40), and with
+`tool_calls` for `auto` and `required`. A call required by name failed against exactly the
+servers that keep the requirement.
+
+Calls with a `stop` finish are an answer of calls: the completion carries them, and its finish is
+`ToolCalls`, in both modes. The calls are complete, since the finish and `[DONE]` both arrived,
+and a caller's loop goes on telling an answer of calls by its finish. The finish is a fact about
+the answer, not about the server's wording of it. A `tool_calls` finish with no calls, and calls
+with a `content_filter` finish, are still `Protocol`: the first has nothing to run, and in the
+second a filter may have cut a call short (D35).
 
 ### P1. Edition 2024; MSRV 1.85
 

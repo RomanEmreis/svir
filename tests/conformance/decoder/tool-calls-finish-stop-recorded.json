@@ -1,0 +1,22 @@
+{
+  "description": "Recorded from vLLM, asked to call a named function: reasoning in the reasoning key, the call, and a 'stop' finish. The answer is the call, and the finish is tool_calls (D45).",
+  "file": "vllm-named-tool.sse",
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "tool_calls",
+        "calls": [
+          {"id": "chatcmpl-tool-92b83d16c7648d0e", "name": "open_locker", "arguments": "{\"number\": 7}"}
+        ],
+        "reasoning": [
+          {
+            "source": "reasoning",
+            "text": "The user wants me to open locker 7. I'll use the open_locker function with the number 7.\n"
+          }
+        ],
+        "usage": {"input": 303, "output": 53, "total": 356, "reasoning": 25}
+      }
+    },
+    "lenient": "same"
+  }
+}

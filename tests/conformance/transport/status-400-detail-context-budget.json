@@ -1,0 +1,21 @@
+{
+  "description": "mlx-vlm with a context limit rejects a conversation it cannot shorten to fit with 400 and only a detail that speaks of the context budget: a context overflow (D30, D44).",
+  "config": {"base_url": "{server}/v1"},
+  "server": [
+    {
+      "status": 400,
+      "headers": {"content-type": "application/json"},
+      "body": "{\"detail\":\"Protected conversation exceeds the available context budget.\"}"
+    }
+  ],
+  "calls": [
+    {
+      "expect": {
+        "error": "context_overflow",
+        "retryable": false,
+        "message": "Protected conversation exceeds the available context budget."
+      }
+    }
+  ],
+  "expect_requests": [{"method": "POST", "path": "/v1/chat/completions"}]
+}

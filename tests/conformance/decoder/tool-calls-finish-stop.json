@@ -1,6 +1,19 @@
 {
-  "description": "Calls with a 'stop' finish reason.",
+  "description": "Calls with a 'stop' finish reason, as OpenAI and vLLM finish a call of a function the request named: the answer is its calls, and the finish is tool_calls (D45).",
   "file": "tools.sse",
   "replace": [["\"finish_reason\":\"tool_calls\"", "\"finish_reason\":\"stop\""]],
-  "expect": {"strict": {"error": "protocol"}, "lenient": "same"}
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "tool_calls",
+        "calls": [
+          {"id": "call-a", "name": "lookup", "arguments": "{\"value\":1}"},
+          {"id": "call-b", "name": "lookup", "arguments": "{\"value\":2}"}
+        ],
+        "reasoning": [{"source": "reasoning_content", "text": "opaque reasoning"}],
+        "usage": {"input": 12, "output": 8, "total": 20}
+      }
+    },
+    "lenient": "same"
+  }
 }
