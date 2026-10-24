@@ -8,22 +8,27 @@ use crate::{Completion, Message, Tool, ToolChoice, ToolResult, Toolbox};
 /// How much the model should reason before answering.
 ///
 /// Each wire API maps it explicitly: Chat Completions sends `reasoning_effort`, with `Off` as
-/// `none`.
+/// `none`. Which levels a model takes is the model's: a level is sent as set, and a server that
+/// does not take it may reject the request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Effort {
     /// No reasoning.
     Off,
+    /// Hardly any.
+    Minimal,
     /// A little.
     Low,
     /// Some.
     Medium,
     /// A lot.
     High,
-    /// As much as the model offers.
+    /// More than a lot: between `High` and `Max`.
     #[serde(rename = "xhigh")]
     XHigh,
+    /// As much as the model offers.
+    Max,
 }
 
 /// The shape of the answer's text.

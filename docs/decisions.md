@@ -44,7 +44,8 @@ svir.
 
 `ToolCallDelta` events exist for display. Executable calls appear only in `Completed`, after a
 finish reason and `[DONE]`. A stream that ends earlier is `TruncatedStream`; partial arguments
-are never executable.
+are never executable. Neither are the calls of an answer the output limit cut off: they are kept
+apart from the executable ones (D47).
 
 ### D6. No agent loop, for now
 
@@ -80,7 +81,8 @@ conservative context-admission estimate, so admission needs no body in memory.
 ### D11. Compatibility learning is part of the transport
 
 The first 400/422 on a request carrying optional fields triggers one retry without them; success
-marks the server as strict for all later requests through the same handle.
+marks the server as strict for all later requests through the same handle. The retry can be
+turned off (D48).
 
 ### D12. A typed error taxonomy
 
@@ -123,9 +125,9 @@ accept a `Request` or a `&Request`.
 - `.tool_choice(ToolChoice)` and `.response_format(format)`: what the answer must meet (D40);
 - `.reasoning(Effort)`, `.max_tokens(n)`, `.temperature(t)`, `.send_reasoning(bool)`.
 
-`Effort` is `Off`, `Low`, `Medium`, `High`, or `XHigh`. Each adapter maps it explicitly: Chat
-Completions sends `reasoning_effort` (`Off` as `none`); an API that takes a thinking budget uses a
-documented, tested table.
+`Effort` is `Off`, `Minimal`, `Low`, `Medium`, `High`, `XHigh`, or `Max` (D46). Each adapter
+maps it explicitly: Chat Completions sends `reasoning_effort` (`Off` as `none`); an API that takes
+a thinking budget uses a documented, tested table.
 
 **Messages.** `Message::user(text).with(part)`, parts kept in the order given (P12). Attachments do
 no I/O when created: `Image::path(p)` and `TextFile::path(p)` record the path, and the size is
@@ -715,6 +717,68 @@ the answer, not about the server's wording of it. A `tool_calls` finish with no 
 with a `content_filter` finish, are still `Protocol`: the first has nothing to run, and in the
 second a filter may have cut a call short (D35).
 
+### D46. Effort has every level Chat Completions names
+
+OpenAI's reasoning guide names seven levels of `reasoning_effort`: `none`, `minimal`, `low`,
+`medium`, `high`, `xhigh`, and `max`, the most; which of them a model takes is the model's.
+`Effort` had five. A caller with `minimal` or `max` in its settings could not ask for them, and
+`XHigh` was said to be as much as the model offers, which `max` is.
+
+`Effort` is `Off`, `Minimal`, `Low`, `Medium`, `High`, `XHigh`, and `Max`. Chat Completions sends
+each by its name, `Off` as `none` (D13). `Max` is as much as the model offers; `XHigh` is the
+level between `High` and `Max`. The serde form of the five there were is unchanged (D22); the new
+ones are `minimal` and `max`.
+
+A level is sent as the request sets it, never moved to a nearby one the server is thought to take
+(P11). Which levels a model takes is not known before it answers, and a level the caller did not
+ask for is a setting it did not choose. A server that does not take one rejects the request: vLLM
+with Qwen3.8 rejected `high` with 400 (wire-protocol 2.5). The lean retry then leaves the effort
+out (D11), unless it is turned off (D48). An API that takes a thinking budget maps all seven in
+its table (O6).
+
+### D47. Calls the output limit cut off are kept apart, and never run
+
+A `length` finish says the output limit stopped the model. Any call it had begun may be cut
+short: its arguments, its name, even its ID may not have arrived. Nothing on the wire tells a
+whole call from a cut one. Pieces of different calls interleave (wire-protocol 3.3), and
+arguments cut short can still be valid JSON, a number cut short for one (D41).
+
+svir put the calls of such an answer in `calls` once each had an ID and a name, where they look
+executable. Added to the next request, they went back as calls the server expects results for. A
+call with no ID or no name failed the whole answer as `Protocol`, and its text and usage with it,
+which a caller wants: to show what arrived, to record it, or to ask the model to go on.
+
+With a `Length` finish, `calls` is empty, and every call the answer began is in
+`Completion::cut_calls`, in index order, with what arrived of it. A cut call is a
+`ToolCallDelta`: its index, its ID and its name when they arrived, and its arguments as
+received. It is the shape a display already builds from the pieces, and it is not a `ToolCall`,
+so a tool set cannot be handed it (D18). In both modes:
+
+- a call with no ID or no name is no error with a `Length` finish; with any other finish it is
+  `Protocol`, as before;
+- indices that are not contiguous, and two calls with one ID, are still `Protocol`: the server
+  contradicts itself, which no cut explains;
+- the tool-call limit holds as before.
+
+Added to the next request, the answer is its text and its reasoning. Cut calls are not sent back,
+so the server waits for no results; a caller that wants the model to go on says so in the next
+message.
+
+### D48. The lean retry can be turned off
+
+The retry of D11 suits a chat: the answer comes either way, and a server learned to be strict
+costs nothing more. It does not suit a caller that records the settings it asked with, or counts
+its attempts itself. The retry is a request it did not make, with settings it did not choose, and
+the client keeps them for every later request. With vLLM and Qwen3.8, `high` was rejected, and the
+retry got the template's default, `xhigh` (wire-protocol 2.5): the caller asked for less reasoning
+and got more, and its later requests lost the effort and usage too, with nothing said.
+
+`ClientBuilder::lean_retry(false)` turns it off. A 400 or 422 to a request with optional fields is
+then reported as any other, `Unsupported` with the server's message, and nothing is learned: the
+next request carries its fields again, and the caller decides what to ask instead. It is on by
+default, so D11 holds for everyone else, and it applies to `stream`, `complete`, and `send` alike.
+What a retried answer left out is not reported yet (O20).
+
 ### P1. Edition 2024; MSRV 1.85
 
 For a library meant for others, the lower the better, as long as nothing newer is needed. 1.85 is
@@ -864,6 +928,12 @@ stands in for its length in tokens, which it never underestimates (but see O5).
   returning the `Completion` with the value, so usage and the next turn are not lost (D13); a
   request that already sets another format; and where it lives, since deriving the schema needs
   `schemars` (D14).
+- **O20. What a lean retry left out.** With the retry on (D11, D48), nothing tells the caller that
+  an answer came from a request without its optional fields, nor which ones. A caller that allows
+  the retry and records its settings needs that. Candidates: an accessor on the client for
+  whether it learned the server is strict, or a mark on the stream or the completion of the fields
+  left out, which is a public contract (D22). Wanted with the first consumer that allows the
+  retry.
 
 Resolved: O1 (API names and DX) by D13-D18, O2 (`<think>` splitting) by D23, O4 (server error
 messages) by D19, O3 (compatibility retry versus context overflow) by D26, O8 (tool arguments)

@@ -36,7 +36,7 @@ instead says so.
 | `tools`, `tool_choice` | See 2.4 |
 | `response_format` | See 2.6 |
 | `stream_options` | `{"include_usage": true}` requests a trailing usage chunk. Optional: see 2.5 |
-| `reasoning_effort` | `none`, `low`, `medium`, `high`, `xhigh`. Optional: see 2.5 |
+| `reasoning_effort` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; which a model takes is the model's. Optional: see 2.5 |
 
 ### 2.2 Messages
 
@@ -230,6 +230,9 @@ Tool calls arrive in pieces and must be assembled:
   `required` (D45).
 - Arguments are only meaningful once the stream is complete. A call is executable only after the
   finish reason and `[DONE]`; a stream cut before `[DONE]` may have incomplete arguments.
+- A `length` finish may cut any call short, its arguments, its name, or its ID, and the wire
+  does not say which: a call with no ID or no name is then what arrived, not a malformed
+  answer. None of its calls is executable (D47).
 
 Recorded example (two calls, split names and arguments, interleaved):
 
@@ -467,4 +470,5 @@ Sources: [LM Studio Chat Completions](https://lmstudio.ai/docs/developer/openai-
 [mlx-lm server](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/SERVER.md),
 [mlx-vlm](https://github.com/Blaizzy/mlx-vlm),
 [vllm-metal](https://vllm.ai/blog/2026-09-22-vllm-metal-v0-28-0),
-[OpenAI: a call of a named function finished with stop](https://community.openai.com/t/function-call-with-finish-reason-of-stop/437226).
+[OpenAI: a call of a named function finished with stop](https://community.openai.com/t/function-call-with-finish-reason-of-stop/437226),
+[OpenAI reasoning models](https://developers.openai.com/api/docs/guides/reasoning).

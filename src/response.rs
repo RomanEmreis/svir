@@ -25,19 +25,20 @@ pub enum Event {
     Completed(Completion),
 }
 
-/// A piece of a tool call as it streams.
+/// A piece of a tool call as it streams, or, in [`Completion::cut_calls`], all of a call that
+/// arrived before the output limit cut the answer off.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct ToolCallDelta {
     /// Which call this piece belongs to; pieces of different calls can interleave.
     pub index: usize,
-    /// The call's ID, on the piece that carries it.
+    /// The call's ID, on the piece that carries it, or once it arrived.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    /// A piece of the tool's name.
+    /// A piece of the tool's name, or all of it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// A piece of the arguments.
+    /// A piece of the arguments, or all of them.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub arguments: String,
 }
@@ -179,9 +180,15 @@ pub struct Completion {
     /// Reasoning, one entry per source, in order of first appearance.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reasoning: Vec<Reasoning>,
-    /// Tool calls, complete and in order.
+    /// Tool calls, complete and in order. Empty when the output limit cut the answer off: its
+    /// calls are in [`cut_calls`](Self::cut_calls).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub calls: Vec<ToolCall>,
+    /// The calls of an answer the output limit cut off, a [`FinishReason::Length`], in order:
+    /// each as far as it arrived, its ID and name only if they did. For display and records,
+    /// never to run; the next request leaves them out.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cut_calls: Vec<ToolCallDelta>,
     /// Token counts, when the server reported them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<Usage>,
@@ -198,6 +205,7 @@ impl Completion {
             text: String::new(),
             reasoning: Vec::new(),
             calls: Vec::new(),
+            cut_calls: Vec::new(),
             usage: None,
             timing: None,
         }

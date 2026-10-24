@@ -1,0 +1,23 @@
+{
+  "description": "A call the output limit cut off before its name arrived is kept without one, not an error (D47).",
+  "file": "tools.sse",
+  "replace": [
+    ["\"name\":\"look\",", ""],
+    ["\"name\":\"up\",", ""],
+    ["\"finish_reason\":\"tool_calls\"", "\"finish_reason\":\"length\""]
+  ],
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "length",
+        "cut_calls": [
+          {"index": 0, "id": "call-a", "arguments": "{\"value\":1}"},
+          {"index": 1, "id": "call-b", "name": "lookup", "arguments": "{\"value\":2}"}
+        ],
+        "reasoning": [{"source": "reasoning_content", "text": "opaque reasoning"}],
+        "usage": {"input": 12, "output": 8, "total": 20}
+      }
+    },
+    "lenient": "same"
+  }
+}

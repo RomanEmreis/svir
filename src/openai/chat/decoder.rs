@@ -549,20 +549,31 @@ impl Decoder {
             finish => finish,
         };
 
+        // The output limit may have cut any call short, even before its ID or name arrived: none
+        // is executable, and each is kept as far as it arrived (D47).
+        let cut = finish == FinishReason::Length;
         let mut ids = HashSet::new();
         let mut calls = Vec::with_capacity(self.calls.len());
+        let mut cut_calls = Vec::new();
         for (expected, (index, call)) in (0u64..).zip(std::mem::take(&mut self.calls)) {
             if index != expected {
                 return Err(protocol("tool call indices are not contiguous"));
             }
-            if call.id.is_empty() || call.name.is_empty() {
+            if !cut && (call.id.is_empty() || call.name.is_empty()) {
                 return Err(protocol("a tool call has no ID or no name"));
             }
-            if !ids.insert(call.id.clone()) {
+            if !call.id.is_empty() && !ids.insert(call.id.clone()) {
                 return Err(protocol("two tool calls share an ID"));
             }
 
-            calls.push(ToolCall::new(call.id, call.name, call.arguments));
+            if cut {
+                let mut delta = ToolCallDelta::new(index as usize, call.arguments);
+                delta.id = Some(call.id).filter(|id| !id.is_empty());
+                delta.name = Some(call.name).filter(|name| !name.is_empty());
+                cut_calls.push(delta);
+            } else {
+                calls.push(ToolCall::new(call.id, call.name, call.arguments));
+            }
         }
 
         if self.refused && !calls.is_empty() {
@@ -593,6 +604,7 @@ impl Decoder {
         done.text = std::mem::take(&mut self.text);
         done.reasoning = std::mem::take(&mut self.reasoning);
         done.calls = calls;
+        done.cut_calls = cut_calls;
         done.usage = self.usage;
         done.timing = self
             .first_token

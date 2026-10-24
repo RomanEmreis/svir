@@ -1,0 +1,9 @@
+{
+  "description": "Two calls with one ID contradict the protocol even when the output limit cut the answer off (D47).",
+  "file": "tools.sse",
+  "replace": [
+    ["call-b", "call-a"],
+    ["\"finish_reason\":\"tool_calls\"", "\"finish_reason\":\"length\""]
+  ],
+  "expect": {"strict": {"error": "protocol"}, "lenient": "same"}
+}

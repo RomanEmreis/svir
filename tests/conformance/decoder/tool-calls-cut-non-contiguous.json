@@ -1,0 +1,9 @@
+{
+  "description": "Call indices 0 and 2 with no 1 contradict the protocol even when the output limit cut the answer off (D47).",
+  "file": "tools.sse",
+  "replace": [
+    ["\"index\":1", "\"index\":2"],
+    ["\"finish_reason\":\"tool_calls\"", "\"finish_reason\":\"length\""]
+  ],
+  "expect": {"strict": {"error": "protocol"}, "lenient": "same"}
+}

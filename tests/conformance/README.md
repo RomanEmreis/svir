@@ -9,9 +9,9 @@ on an open decision lists it in `open`.
 
 | Directory | Covers | Status |
 | --- | --- | --- |
-| `decoder/` | SSE framing, deltas, reasoning, refusals, tool calls, usage, limits, errors inside the stream, strict and lenient | 81 cases, run by `tests/conformance_decoder.rs` |
-| `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, tool choice and response format, admission | 39 cases, run by `tests/conformance_encoder.rs` |
-| `transport/` | Authentication, extra headers, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 58 cases, run by `tests/conformance_transport.rs` |
+| `decoder/` | SSE framing, deltas, reasoning, refusals, tool calls, usage, limits, errors inside the stream, strict and lenient | 87 cases, run by `tests/conformance_decoder.rs` |
+| `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, tool choice and response format, admission | 41 cases, run by `tests/conformance_encoder.rs` |
+| `transport/` | Authentication, extra headers, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 59 cases, run by `tests/conformance_transport.rs` |
 
 ## Decoder cases
 
@@ -66,6 +66,7 @@ A completion:
 | `text` | The answer. Default `""`. |
 | `reasoning` | `[{"source": ..., "text": ...}]`, one entry per carrier in order of first appearance, text concatenated. `source` is `reasoning_content`, `reasoning`, or `think`. Default `[]`. |
 | `calls` | `[{"id": ..., "name": ..., "arguments": ...}]` in index order; `arguments` is the raw string. Default `[]`. |
+| `cut_calls` | Calls a `length` finish cut off, which `calls` never holds (D47): `[{"index": n, "id": ..., "name": ..., "arguments": ...}]` in index order, `id` and `name` present only when they arrived, `arguments` only when not empty. Default `[]`. |
 | `usage` | `{"input": n, "output": n}` plus `total` and `reasoning` when the server reported them. Default `null`. |
 
 Fields are compared exactly after defaults are filled in. This notation is the serde form of
@@ -125,6 +126,8 @@ svir's API:
 ```
 
 Everything but `model` and `messages` is optional and present only when the request sets it.
+`reasoning_effort` is a level by its Chat Completions name: `none`, `minimal`, `low`, `medium`,
+`high`, `xhigh`, or `max`.
 `tool_choice` is `auto`, `none`, `required`, or `{"tool": name}`. `response_format` is `text`,
 `json`, or `{"schema": {"name": ..., "schema": ..., "strict": true}}`, where `strict` is present
 only when true. Both are the serde form of svir's `ToolChoice` and `ResponseFormat`;
@@ -177,7 +180,7 @@ A scripted HTTP server on loopback plays the model server.
 | Field | Meaning |
 | --- | --- |
 | `description` | What the case is about. Required. |
-| `config` | `base_url` (a string, or a list to run the case once per value), `api_key`, `headers` (`name -> value`, added to every request), `timeout_ms`, `allow_http`. `{server}` stands for the scripted server's origin, such as `http://127.0.0.1:52811`. |
+| `config` | `base_url` (a string, or a list to run the case once per value), `api_key`, `headers` (`name -> value`, added to every request), `timeout_ms`, `allow_http`, `lean_retry` (`false` turns the retry without optional fields off). `{server}` stands for the scripted server's origin, such as `http://127.0.0.1:52811`. |
 | `expect_config` | `"accepted"` or `"rejected"`: only construct the transport from `config`. No server, no calls. |
 | `server` | Replies, in order, one per HTTP request the server receives. |
 | `calls` | Calls made in order on one transport instance. |
