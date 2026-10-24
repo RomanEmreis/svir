@@ -37,6 +37,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   kept.** It was `ErrorKind::Protocol`, and the answer's text and usage were
   lost with it. With any other finish it is still `Protocol` (D47).
 
+### Security
+
+* **`rustls` 0.23.46 and `tokio` 1.53.3 at the least**, the first releases
+  with the fixes for RUSTSEC-2026-0346 to RUSTSEC-2026-0349 (rustls) and
+  RUSTSEC-2026-0386 (tokio's `AsyncFd`, which svir does not use). With the
+  `tls` or `tls-aws-lc` feature, also update `rustls-webpki` to 0.103.16
+  and `webpki-roots` to 1.0.10 or later (RUSTSEC-2026-0381 and
+  RUSTSEC-2026-0382): svir reaches them through `rustls` and
+  `hyper-rustls`, so `cargo update` picks them up.
+
 ## 0.1.6
 
 ### Fixed

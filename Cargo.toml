@@ -38,16 +38,16 @@ futures-core = { version = "0.3.34", default-features = false, features = ["std"
 hyper = { version = "1.12.0", features = ["client", "http1"], optional = true }
 hyper-rustls = { version = "0.27.10", default-features = false, features = ["http1", "http2", "tls12", "webpki-roots"], optional = true }
 hyper-util = { version = "0.1.21", features = ["client-legacy", "http1", "tokio"], optional = true }
-rustls = { version = "0.23.45", default-features = false, features = ["std", "tls12"], optional = true }
+rustls = { version = "0.23.46", default-features = false, features = ["std", "tls12"], optional = true }
 schemars = { version = "1.2.3", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.154"
-tokio = { version = "1.53.2", features = ["fs", "io-util", "rt", "time"], optional = true }
+tokio = { version = "1.53.3", features = ["fs", "io-util", "rt", "time"], optional = true }
 tracing = { version = "0.1.44", default-features = false, features = ["std"], optional = true }
 
 [dev-dependencies]
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
-tokio = { version = "1.53.2", features = ["fs", "io-util", "macros", "net", "rt", "rt-multi-thread", "time"] }
+tokio = { version = "1.53.3", features = ["fs", "io-util", "macros", "net", "rt", "rt-multi-thread", "time"] }
 
 # Examples that talk to a server need the client; `codec` needs nothing.
 [[example]]
