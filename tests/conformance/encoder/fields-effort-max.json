@@ -1,0 +1,16 @@
+{
+  "description": "The most effort is sent as max, not moved to xhigh (D46).",
+  "request": {
+    "model": "m",
+    "reasoning_effort": "max",
+    "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "reasoning_effort": "max",
+      "messages": [{"role": "user", "content": "hi"}]
+    }
+  }
+}

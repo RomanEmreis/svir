@@ -85,8 +85,8 @@ builder methods, with public fields for reading.
 - An **attachment** (`Image`, `TextFile`) has a `Source`: a path, read while the body streams
   with its size measured when the body is built, or bytes in memory (serialized as base64). A
   text file may declare its escaped length, measured when the application stored it (D39).
-- **Effort** is the requested reasoning effort (`Off` to `XHigh`); each adapter maps it to its
-  API (D13).
+- **Effort** is the requested reasoning effort, `Off`, `Minimal`, `Low`, `Medium`, `High`,
+  `XHigh`, or `Max` (D46); each adapter maps it to its API (D13).
 - A **tool descriptor** is a name, a description, and a JSON Schema for the input.
 - A **tool call** is a provider call ID, a name, and the arguments as the raw string received.
 - **Usage** is input and output tokens, and total and reasoning tokens when the server reports
@@ -181,6 +181,7 @@ struct Completion {
     text: String,
     reasoning: Vec<Reasoning>,
     calls: Vec<ToolCall>,
+    cut_calls: Vec<ToolCallDelta>, // a `Length` finish's calls, never executable (D47)
     usage: Option<Usage>,
     timing: Option<Timing>,
 }
@@ -190,6 +191,9 @@ struct Completion {
 - `ToolCallDelta` is display data only. Executable calls exist only in `Completed`, which is
   emitted after a finish reason and `[DONE]` (D5). A stream that ends before that is a
   `TruncatedStream` error, never a partial completion.
+- With a `Length` finish, `calls` is empty: the output limit may have cut any call short, so
+  each is in `cut_calls` as far as it arrived, its ID and name only if they did. Added to the
+  next request, the answer is its text and reasoning, without them (D47).
 - `Completed` is the last item. Bytes after `[DONE]` are not read (P9).
 - An answer asked for as JSON arrives as text like any other. `Completion::parse::<T>()` reads it
   into a type when it finished with `Stop`, and fails on any other finish; nothing checks it
@@ -326,6 +330,8 @@ attempt. If the retry fails too, the original error is reported. The memory live
 cheap-to-clone handle shared by every request to that server. A 400/422 means nothing was
 generated, so this retry is safe. A 400 or 422 that is a context overflow, or a prompt the
 content filter blocked, is not about those fields and is reported without the retry (D26, D36).
+`ClientBuilder::lean_retry(false)` turns the retry off: the rejection is reported, and nothing
+is learned (D48).
 
 A tool choice and a response format are not optional in this sense: the answer must meet them.
 The retry keeps them, a server learned to be strict still gets them, and a request that carries

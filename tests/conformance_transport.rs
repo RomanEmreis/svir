@@ -29,6 +29,9 @@ fn client(config: &Value, base_url: &str) -> Result<Client, Error> {
     if config["allow_http"].as_bool() == Some(true) {
         builder = builder.allow_http();
     }
+    if let Some(retry) = config["lean_retry"].as_bool() {
+        builder = builder.lean_retry(retry);
+    }
     builder.build()
 }
 

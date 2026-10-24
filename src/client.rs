@@ -93,6 +93,8 @@ struct Inner<B> {
     layers: Box<[Box<dyn Erased<B>>]>,
     idle: Option<Duration>,
     include_usage: bool,
+    /// Whether a rejection of the optional fields is retried without them (D48).
+    lean_retry: bool,
     mode: Mode,
     limits: Limits,
     think: Think,
@@ -119,6 +121,7 @@ impl Client {
             headers: Vec::new(),
             allow_http: false,
             include_usage: true,
+            lean_retry: true,
             mode: Mode::default(),
             limits: Limits::default(),
             think: Think::default(),
@@ -216,9 +219,11 @@ impl<B: Backend> Client<B> {
         // generated, so one attempt without them is safe. A rejection the body explains, a context
         // overflow or a blocked prompt, is not about them (D26, D36). What the answer must meet,
         // the tool choice and the response format, is not optional: the attempt keeps it (D40).
+        // A caller may turn the attempt off, and has the rejection then (D48).
         let optional = request.reasoning.is_some()
             || request.include_usage.unwrap_or(self.inner.include_usage);
-        if !lean
+        if self.inner.lean_retry
+            && !lean
             && optional
             && matches!(status, 400 | 422)
             && error.kind() == ErrorKind::Unsupported
@@ -339,6 +344,7 @@ pub struct ClientBuilder<B = Hyper> {
     headers: Vec<(String, String)>,
     allow_http: bool,
     include_usage: bool,
+    lean_retry: bool,
     mode: Mode,
     limits: Limits,
     think: Think,
@@ -417,9 +423,22 @@ impl<B> ClientBuilder<B> {
     }
 
     /// Whether to ask for token usage when a request does not say. On by default; a server that
-    /// rejects the field is detected once and remembered.
+    /// rejects the field is detected once and remembered, unless
+    /// [`lean_retry`](Self::lean_retry) is off.
     pub fn include_usage(mut self, include: bool) -> Self {
         self.include_usage = include;
+        self
+    }
+
+    /// Whether a 400 or 422 to a request with optional fields, `reasoning_effort` and
+    /// `stream_options`, is retried once without them. On by default; a retry that succeeds
+    /// leaves them out of every later request too.
+    ///
+    /// Turned off, the rejection is the call's error, [`ErrorKind::Unsupported`] with the
+    /// server's message, and the next request carries the fields again: for a caller that
+    /// keeps the settings it asked with, or counts its own attempts.
+    pub fn lean_retry(mut self, retry: bool) -> Self {
+        self.lean_retry = retry;
         self
     }
 
@@ -488,6 +507,7 @@ impl<B> ClientBuilder<B> {
             headers: self.headers,
             allow_http: self.allow_http,
             include_usage: self.include_usage,
+            lean_retry: self.lean_retry,
             mode: self.mode,
             limits: self.limits,
             think: self.think,
@@ -526,6 +546,7 @@ impl<B> ClientBuilder<B> {
                 layers: self.layers.into_boxed_slice(),
                 idle: self.idle_timeout,
                 include_usage: self.include_usage,
+                lean_retry: self.lean_retry,
                 mode: self.mode,
                 limits: self.limits,
                 think: self.think,

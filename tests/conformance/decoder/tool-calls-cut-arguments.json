@@ -1,0 +1,20 @@
+{
+  "description": "Arguments the output limit cut short are kept as received, in a cut call, never in calls (D47).",
+  "chunks": [
+    "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Looking up.\"},\"finish_reason\":null}]}\n\n",
+    "data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-a\",\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"arguments\":\"{\\\"value\\\":\"}}]},\"finish_reason\":null}]}\n\n",
+    "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"length\"}]}\n\n",
+    "data: [DONE]\n\n"
+  ],
+  "strides": [1, 3, 8192],
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "length",
+        "text": "Looking up.",
+        "cut_calls": [{"index": 0, "id": "call-a", "name": "lookup", "arguments": "{\"value\":"}]
+      }
+    },
+    "lenient": "same"
+  }
+}

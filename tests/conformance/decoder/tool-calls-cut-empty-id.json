@@ -1,0 +1,22 @@
+{
+  "description": "An empty ID is no ID: a cut call with one is kept without it (D47).",
+  "file": "tools.sse",
+  "replace": [
+    ["\"id\":\"call-b\"", "\"id\":\"\""],
+    ["\"finish_reason\":\"tool_calls\"", "\"finish_reason\":\"length\""]
+  ],
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "length",
+        "cut_calls": [
+          {"index": 0, "id": "call-a", "name": "lookup", "arguments": "{\"value\":1}"},
+          {"index": 1, "name": "lookup", "arguments": "{\"value\":2}"}
+        ],
+        "reasoning": [{"source": "reasoning_content", "text": "opaque reasoning"}],
+        "usage": {"input": 12, "output": 8, "total": 20}
+      }
+    },
+    "lenient": "same"
+  }
+}

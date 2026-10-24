@@ -201,6 +201,26 @@ fn what_the_answer_must_meet_serializes_as_documented() {
 }
 
 #[test]
+fn every_effort_serializes_as_documented() {
+    let levels = [
+        Effort::Off,
+        Effort::Minimal,
+        Effort::Low,
+        Effort::Medium,
+        Effort::High,
+        Effort::XHigh,
+        Effort::Max,
+    ];
+    let value = serde_json::to_value(levels).unwrap();
+    assert_eq!(
+        value,
+        json!(["off", "minimal", "low", "medium", "high", "xhigh", "max"])
+    );
+    let back: Vec<Effort> = serde_json::from_value(value).unwrap();
+    assert_eq!(back, levels);
+}
+
+#[test]
 fn conformance_requests_use_the_serde_form_of_what_the_answer_must_meet() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/conformance");
     let mut checked = 0;

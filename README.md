@@ -3,7 +3,7 @@
 A small, composable Rust SDK for talking to large language models: the wire protocol between your
 application and a model server, and nothing it does not need.
 
-[![latest](https://img.shields.io/badge/latest-0.1.6-blue)](https://crates.io/crates/svir)
+[![latest](https://img.shields.io/badge/latest-0.1.7-blue)](https://crates.io/crates/svir)
 [![rustc](https://img.shields.io/badge/rustc-1.85+-964B00)](https://releases.rs/docs/1.85.0/)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-violet.svg)](#license)
 [![CI](https://github.com/RomanEmreis/svir/actions/workflows/rust.yml/badge.svg)](https://github.com/RomanEmreis/svir/actions/workflows/rust.yml)
@@ -26,7 +26,7 @@ protocol, each strong where the other is weak.
 
 ```toml
 [dependencies]
-svir = "0.1.6"
+svir = "0.1.7"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
@@ -72,8 +72,8 @@ mlx-lm, llama.cpp, vLLM, and hosted endpoints.
 - **Transport**: HTTP with optional Bearer authentication and headers of the caller's own,
   typed status mapping, timeouts, and cancellation by drop.
 - **Compatibility**: a server that rejects optional fields such as `reasoning_effort` is detected
-  once and remembered. What the answer must meet, a tool choice or a response format, is never
-  dropped.
+  once and remembered, unless the caller turns that retry off. What the answer must meet, a tool
+  choice or a response format, is never dropped.
 
 On top of that core, opt-in:
 
@@ -118,7 +118,8 @@ SVIR_MODEL=<model> cargo run --example stream
   a round trip. A feature an adapter cannot represent is an explicit error, not a dropped field.
 - **Wire types stay in adapters.** Shared types describe what the caller needs, not the union of
   every provider's JSON.
-- **Complete before executable.** A partially streamed tool call is display data only.
+- **Complete before executable.** A partially streamed tool call is display data only, and so is
+  a call the output limit cut off.
 - **Strict and bounded by default.** Unknown input is an error unless the caller asks for
   leniency. Bytes, events, and tool calls always have limits, and reaching one is a typed outcome.
 - **Credentials stay out of the record.** Keys and header values never reach errors, events,

@@ -1,0 +1,16 @@
+{
+  "description": "The minimal effort is sent by its name, as the request sets it (D46).",
+  "request": {
+    "model": "m",
+    "reasoning_effort": "minimal",
+    "messages": [{"role": "user", "parts": [{"text": "hi"}]}]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "reasoning_effort": "minimal",
+      "messages": [{"role": "user", "content": "hi"}]
+    }
+  }
+}

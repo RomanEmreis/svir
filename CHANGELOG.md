@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.1.7
+
+### Added
+
+* **`Effort::Minimal` and `Effort::Max`**, sent as `minimal` and `max`,
+  the two levels of `reasoning_effort` OpenAI names that `Effort` had no
+  variant for. `Max` is as much as the model offers; `XHigh` is now the
+  level between `High` and `Max`. Which levels a model takes is the
+  model's, and a level is sent as set (D46).
+* **`Completion::cut_calls`**: the calls of an answer the output limit cut
+  off, a `FinishReason::Length`, as `ToolCallDelta`s, each as far as it
+  arrived: its index, its ID and name only if they did, its arguments as
+  received. For display and records, never to run; the next request leaves
+  them out (D47).
+* **`ClientBuilder::lean_retry(false)`** turns off the retry without
+  `reasoning_effort` and `stream_options` after a 400 or 422. The rejection
+  is then the call's error, `ErrorKind::Unsupported` with the server's
+  message, and nothing is learned: the next request carries the fields
+  again. On by default (D48).
+
+### Changed
+
+* **With a `Length` finish, `calls` is empty.** The output limit may have
+  cut any call short, and nothing on the wire says which, so none is
+  executable: its calls are in `cut_calls`. They were in `calls` once each
+  had an ID and a name, and went back with the answer as calls the server
+  expected results for. A caller that runs `calls` without checking the
+  finish runs nothing for such an answer now (D47).
+* **A call with no ID or no name in an answer the output limit cut off is
+  kept.** It was `ErrorKind::Protocol`, and the answer's text and usage were
+  lost with it. With any other finish it is still `Protocol` (D47).
+
+### Security
+
+* **`rustls` 0.23.46 and `tokio` 1.53.3 at the least**, the first releases
+  with the fixes for RUSTSEC-2026-0346 to RUSTSEC-2026-0349 (rustls) and
+  RUSTSEC-2026-0386 (tokio's `AsyncFd`, which svir does not use). With the
+  `tls` or `tls-aws-lc` feature, also update `rustls-webpki` to 0.103.16
+  and `webpki-roots` to 1.0.10 or later (RUSTSEC-2026-0381 and
+  RUSTSEC-2026-0382): svir reaches them through `rustls` and
+  `hyper-rustls`, so `cargo update` picks them up.
+
 ## 0.1.6
 
 ### Fixed

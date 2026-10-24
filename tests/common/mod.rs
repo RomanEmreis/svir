@@ -59,10 +59,12 @@ pub enum Attachments<'a> {
 fn effort(name: &str) -> Effort {
     match name {
         "none" => Effort::Off,
+        "minimal" => Effort::Minimal,
         "low" => Effort::Low,
         "medium" => Effort::Medium,
         "high" => Effort::High,
         "xhigh" => Effort::XHigh,
+        "max" => Effort::Max,
         other => panic!("unknown effort {other}"),
     }
 }

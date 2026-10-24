@@ -74,7 +74,8 @@ impl Message {
 }
 
 impl From<Completion> for Message {
-    /// The model's answer as the next request needs it: reasoning, text, then tool calls.
+    /// The model's answer as the next request needs it: reasoning, text, then tool calls. Calls
+    /// the output limit cut off are left out: there are no results for them.
     fn from(done: Completion) -> Self {
         let mut parts = Vec::with_capacity(done.reasoning.len() + 1 + done.calls.len());
         parts.extend(done.reasoning.into_iter().map(Part::Reasoning));
@@ -338,7 +339,7 @@ mod base64_bytes {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{FinishReason, ReasoningSource};
+    use crate::{FinishReason, ReasoningSource, ToolCallDelta};
 
     #[test]
     fn parts_keep_the_order_given() {
@@ -406,6 +407,26 @@ mod tests {
                 Part::Reasoning(Reasoning::new(ReasoningSource::ReasoningContent, "hmm")),
                 Part::Text("Let me look.".into()),
                 Part::ToolCall(ToolCall::new("call-a", "lookup", r#"{"value":1}"#)),
+            ]
+        );
+    }
+
+    #[test]
+    fn calls_the_output_limit_cut_off_are_not_sent_back() {
+        let mut cut = ToolCallDelta::new(0, r#"{"value":"#);
+        cut.name = Some("lookup".into());
+
+        let mut done = Completion::new(FinishReason::Length);
+        done.text = "Let me look.".into();
+        done.reasoning = vec![Reasoning::new(ReasoningSource::ReasoningContent, "hmm")];
+        done.cut_calls = vec![cut];
+
+        let msg = Message::from(done);
+        assert_eq!(
+            msg.parts,
+            [
+                Part::Reasoning(Reasoning::new(ReasoningSource::ReasoningContent, "hmm")),
+                Part::Text("Let me look.".into()),
             ]
         );
     }

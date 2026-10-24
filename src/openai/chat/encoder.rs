@@ -483,10 +483,12 @@ fn response_format(format: &ResponseFormat) -> Option<WireFormat<'_>> {
 fn effort(effort: Effort) -> &'static str {
     match effort {
         Effort::Off => "none",
+        Effort::Minimal => "minimal",
         Effort::Low => "low",
         Effort::Medium => "medium",
         Effort::High => "high",
         Effort::XHigh => "xhigh",
+        Effort::Max => "max",
     }
 }
 

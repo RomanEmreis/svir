@@ -1,5 +1,5 @@
 {
-  "description": "A call that never received an ID.",
+  "description": "A call that never received an ID, in an answer the output limit did not cut off (D47).",
   "file": "tools.sse",
   "replace": [["\"id\":\"call-b\",", ""]],
   "expect": {"strict": {"error": "protocol"}, "lenient": "same"}
