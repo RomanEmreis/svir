@@ -19,11 +19,15 @@ use crate::{
 /// last encodes without padding and the blocks join into one valid string.
 const BLOCK: usize = 48 * 1024;
 
+/// The most one image counts for in admission by default: what the common vision encoders make
+/// of one image at their default settings, at most. Hosted APIs charge far less.
+const IMAGE_TOKENS: u64 = 16_384;
+
 /// Encodes a [`Request`] as a Chat Completions body.
 ///
 /// The body carries `model`, `messages`, and `stream: true`, and otherwise only what the request
 /// sets. Its exact length is known before the first byte, and doubles as the estimate for context
-/// admission.
+/// admission, with each image counted as no more than [`image_tokens`](Self::image_tokens).
 ///
 /// ```
 /// use svir::openai::chat::Encoder;
@@ -46,6 +50,7 @@ pub struct Encoder {
     include_usage: bool,
     block: usize,
     context: Option<u64>,
+    image_tokens: u64,
 }
 
 impl Default for Encoder {
@@ -62,6 +67,7 @@ impl Encoder {
             include_usage: false,
             block: BLOCK,
             context: None,
+            image_tokens: IMAGE_TOKENS,
         }
     }
 
@@ -87,12 +93,22 @@ impl Encoder {
         self
     }
 
-    /// Sets the model's context size for admission: a request whose body length plus
-    /// `max_tokens` does not fit, or whose `max_tokens` is 0, is
-    /// [`ErrorKind::ContextOverflow`] before anything is sent. The body length in bytes stands in
-    /// for its length in tokens, which it never underestimates.
+    /// Sets the model's context size for admission: a request whose estimate plus `max_tokens`
+    /// does not fit, or whose `max_tokens` is 0, is [`ErrorKind::ContextOverflow`] before
+    /// anything is sent. The estimate is the body length in bytes, which never underestimates
+    /// text, with each image's base64 counted as no more than
+    /// [`image_tokens`](Self::image_tokens).
     pub fn context_tokens(mut self, tokens: u64) -> Self {
         self.context = Some(tokens);
+        self
+    }
+
+    /// Sets the most one image counts for in admission: its base64 length, but no more than
+    /// this many tokens. 16384 by default, the most the common vision encoders make of one image
+    /// at their default settings; a model that charges less, as hosted APIs do, can be given its
+    /// own figure. Without [`context_tokens`](Self::context_tokens) it has no effect.
+    pub fn image_tokens(mut self, tokens: u64) -> Self {
+        self.image_tokens = tokens;
         self
     }
 
@@ -222,16 +238,31 @@ impl Encoder {
         }
         out.raw(b"]}");
 
-        let (segments, length) = out.finish();
-        if let Some(context) = self.context {
-            let reserved = request.max_tokens.unwrap_or(0);
-            if request.max_tokens == Some(0) || length.saturating_add(reserved) > context {
-                return Err(Error::new(ErrorKind::ContextOverflow)
-                    .with_detail("the body and max_tokens do not fit in the context size"));
-            }
-        }
+        let (segments, length, images) = out.finish();
+        self.admit(request, length, &images)?;
 
         Ok(Body::new(segments, length, self.block))
+    }
+
+    /// Checks that the request fits in the context size, when there is one. `images` are the
+    /// base64 lengths of the images in the body.
+    fn admit(&self, request: &Request, length: u64, images: &[u64]) -> Result<(), Error> {
+        let Some(context) = self.context else {
+            return Ok(());
+        };
+
+        let uncounted: u64 = images
+            .iter()
+            .map(|encoded| encoded.saturating_sub(self.image_tokens))
+            .sum();
+        let estimate = length - uncounted;
+        let reserved = request.max_tokens.unwrap_or(0);
+
+        if request.max_tokens == Some(0) || estimate.saturating_add(reserved) > context {
+            return Err(Error::new(ErrorKind::ContextOverflow)
+                .with_detail("the request and max_tokens do not fit in the context size"));
+        }
+        Ok(())
     }
 }
 
@@ -340,7 +371,7 @@ fn user(message: &Message, out: &mut Segments, measure: &mut Measure<'_>) -> Res
             out.raw(br#"{"type":"image_url","image_url":{"url":"data:"#);
             out.escaped(media_type.as_bytes());
             out.raw(b";base64,");
-            out.data(&image.source, Encoding::Base64, None, measure)?;
+            out.image(&image.source, measure)?;
             out.raw(br#""}}"#);
         }
         out.raw(b"]");
@@ -502,6 +533,8 @@ struct Segments {
     parts: Vec<Segment>,
     pending: Vec<u8>,
     length: u64,
+    /// The base64 length of each image, for admission.
+    images: Vec<u64>,
 }
 
 impl Segments {
@@ -547,8 +580,9 @@ impl Segments {
         encoding: Encoding,
         declared: Option<u64>,
         measure: &mut Measure<'_>,
-    ) -> Result<(), Error> {
+    ) -> Result<u64, Error> {
         let measured = measure(source, encoding, declared)?;
+
         self.flush();
         self.length += measured.encoded;
         self.parts.push(Segment::Data {
@@ -557,6 +591,14 @@ impl Segments {
             encoded: measured.encoded,
             encoding,
         });
+
+        Ok(measured.encoded)
+    }
+
+    /// An image, as base64 encoded when the body is read.
+    fn image(&mut self, source: &Source, measure: &mut Measure<'_>) -> Result<(), Error> {
+        let encoded = self.data(source, Encoding::Base64, None, measure)?;
+        self.images.push(encoded);
         Ok(())
     }
 
@@ -569,9 +611,10 @@ impl Segments {
         }
     }
 
-    fn finish(mut self) -> (Vec<Segment>, u64) {
+    /// The pieces, the length, and the base64 length of each image.
+    fn finish(mut self) -> (Vec<Segment>, u64, Vec<u64>) {
         self.flush();
-        (self.parts, self.length)
+        (self.parts, self.length, self.images)
     }
 }
 
@@ -850,5 +893,23 @@ mod tests {
         assert_eq!(body["tools"][0]["type"], "function");
         assert_eq!(body["tools"][0]["function"]["name"], "now");
         assert_eq!(body.get("tool_choice"), None);
+    }
+
+    #[test]
+    fn an_image_counts_16384_tokens_at_most_by_default() {
+        let photo = Image::bytes(vec![0u8; 30_000], "image/jpeg");
+        let request = Request::new("m")
+            .max_tokens(16)
+            .message(Message::user("").with(photo));
+
+        let length = Encoder::new().encode(&request).unwrap().len();
+        let estimate = length - base64_len(30_000) + 16_384;
+        let admits = |context: u64| Encoder::new().context_tokens(context).encode(&request);
+
+        assert!(admits(estimate + 16).is_ok());
+        assert_eq!(
+            admits(estimate + 15).unwrap_err().kind(),
+            ErrorKind::ContextOverflow
+        );
     }
 }

@@ -10,7 +10,7 @@ on an open decision lists it in `open`.
 | Directory | Covers | Status |
 | --- | --- | --- |
 | `decoder/` | SSE framing, deltas, reasoning, refusals, tool calls, usage, limits, errors inside the stream, strict and lenient | 87 cases, run by `tests/conformance_decoder.rs` |
-| `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, tool choice and response format, admission | 41 cases, run by `tests/conformance_encoder.rs` |
+| `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, tool choice and response format, admission | 44 cases, run by `tests/conformance_encoder.rs` |
 | `transport/` | Authentication, extra headers, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 59 cases, run by `tests/conformance_transport.rs` |
 
 ## Decoder cases
@@ -150,7 +150,7 @@ Parts:
 | `description` | What the case is about. Required. |
 | `request` | The request, as above. Required. |
 | `attachments` | `key -> attachment`: `media_type` (images) or `name` (files), content as `hex` or `text`, and optionally `declared_size` and, for a file, `escaped_len`: its length once escaped into a JSON string, as the caller declares it. |
-| `options` | `lean`: leave out the optional fields. `send_reasoning`: send reasoning back. `block_bytes`: block sizes to read attachments in (multiples of 3). `context_tokens`: check admission. |
+| `options` | `lean`: leave out the optional fields. `send_reasoning`: send reasoning back. `block_bytes`: block sizes to read attachments in (multiples of 3). `context_tokens`: check admission. `image_tokens`: the most one image counts for in admission (default 16384). |
 | `open` | As for decoder cases. |
 | `expect` | `{"body": <JSON>}`, `{"error": "attachment", "context_overflow", or "unsupported"}`, or `{"open": id}`. |
 
@@ -170,8 +170,9 @@ Running a case:
 5. For `unsupported`: building the body fails, before any byte is sent. The request asks for
    something the body cannot carry, such as a call of a tool it does not offer.
 6. With `context_tokens`: the request is admitted exactly when `max_tokens` is above 0 and the
-   declared length plus `max_tokens` is at most `context_tokens`. Otherwise the outcome is
-   `context_overflow`, before any byte is sent.
+   estimate plus `max_tokens` is at most `context_tokens`. The estimate is the declared length,
+   with each image's base64 counted as the lesser of its length and `image_tokens`. Otherwise
+   the outcome is `context_overflow`, before any byte is sent.
 
 ## Transport cases
 

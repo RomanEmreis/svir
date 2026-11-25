@@ -13,7 +13,7 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
    cases pass in `tests/conformance_decoder.rs`.
 4. **Encoder.** Done: `svir::openai::chat::Encoder` and `Body`, with the exact length,
    attachments from memory and from disk, tools, tool calls and results, reasoning sent back, and
-   admission. All 41 encoder cases pass in `tests/conformance_encoder.rs`, at every block size
+   admission. All 44 encoder cases pass in `tests/conformance_encoder.rs`, at every block size
    and from memory.
 5. **Transport and compatibility.** Done: `Client` and its builder, `EventStream`, the HTTP seam
    with the hyper backend, authentication, status mapping, timeouts, cancellation, optional-field
@@ -44,7 +44,7 @@ written for all three components:
 
 - `decoder/`: 87 cases. Framing, reasoning and `<think>` splitting, refusals, tool-call assembly,
   usage, limits, errors inside the stream, and strict and lenient outcomes for each.
-- `encoder/`: 41 cases. Content layout, attachments at every size around the block size, exact
+- `encoder/`: 44 cases. Content layout, attachments at every size around the block size, exact
   length and repeatability, declared escaped lengths, reasoning and tool round trips, failed tool
   results, tool choice and response format, admission.
 - `transport/`: 59 cases. Authentication, the caller's headers, status mapping, the stream,

@@ -1,0 +1,14 @@
+{
+  "description": "The cap is per image, not on all images together: two images count image_tokens each, and one token short is an overflow.",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "messages": [{"role": "user", "parts": [{"image": "a"}, {"image": "b"}]}]
+  },
+  "attachments": {
+    "a": {"media_type": "image/png", "hex": "89504e470d0a1a0a0000000d494844520000000100000001"},
+    "b": {"media_type": "image/png", "hex": "89504e470d0a1a0a0000000d494844520000000200000002"}
+  },
+  "options": {"context_tokens": 239, "image_tokens": 4},
+  "expect": {"error": "context_overflow"}
+}

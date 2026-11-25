@@ -56,6 +56,10 @@ async fn main() -> Result<(), svir::Error> {
 `client.complete(&request)` returns the whole answer instead. Dropping the stream cancels the
 request.
 
+Plain HTTP is all a server on loopback needs. For HTTPS, pick a crypto provider for rustls:
+`features = ["tls-ring"]`, or `["tls-aws-lc"]` for a build that has aws-lc-rs already. Without
+either, an `https` URL is refused when the client is built.
+
 ## What it covers
 
 The first protocol is OpenAI-compatible Chat Completions streaming, as served by LM Studio,
@@ -65,12 +69,14 @@ mlx-lm, llama.cpp, vLLM, and hosted endpoints.
   tool call required or forbidden; an answer as JSON, or JSON to a schema; usage; finish reasons;
   a typed error.
 - **Encoder**: the request body streamed from disk, attachments included, with an exact
-  `Content-Length` known before the first byte. That length is also the context estimate.
+  `Content-Length` known before the first byte. That length is also the context estimate, with
+  each image capped at what a model may charge for one.
 - **Decoder**: SSE framing, tool calls assembled across deltas, reasoning from
   `reasoning_content`, `reasoning`, or inline `<think>` tags, usage, errors inside the stream, and
   hard limits. Strict by default, lenient on request.
-- **Transport**: HTTP with optional Bearer authentication and headers of the caller's own,
-  typed status mapping, timeouts, and cancellation by drop.
+- **Transport**: HTTP, and HTTPS through rustls with ring or aws-lc-rs, with optional Bearer
+  authentication and headers of the caller's own, typed status mapping, timeouts, and
+  cancellation by drop.
 - **Compatibility**: a server that rejects optional fields such as `reasoning_effort` is detected
   once and remembered, unless the caller turns that retry off. What the answer must meet, a tool
   choice or a response format, is never dropped.

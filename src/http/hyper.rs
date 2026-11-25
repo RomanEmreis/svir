@@ -25,9 +25,9 @@ use hyper_util::{
 use super::{Backend, HttpRequest, HttpResponse, Method};
 use crate::{Error, ErrorKind, body::BodyStream};
 
-#[cfg(any(feature = "tls", feature = "tls-aws-lc"))]
+#[cfg(any(feature = "tls-ring", feature = "tls-aws-lc"))]
 type Connector = hyper_rustls::HttpsConnector<HttpConnector>;
-#[cfg(not(any(feature = "tls", feature = "tls-aws-lc")))]
+#[cfg(not(any(feature = "tls-ring", feature = "tls-aws-lc")))]
 type Connector = HttpConnector;
 
 /// The crypto provider, always given explicitly: rustls has no default one in a build that has
@@ -37,13 +37,13 @@ fn provider() -> rustls::crypto::CryptoProvider {
     rustls::crypto::aws_lc_rs::default_provider()
 }
 
-#[cfg(all(feature = "tls", not(feature = "tls-aws-lc")))]
+#[cfg(all(feature = "tls-ring", not(feature = "tls-aws-lc")))]
 fn provider() -> rustls::crypto::CryptoProvider {
     rustls::crypto::ring::default_provider()
 }
 
-/// The built-in HTTP backend: a pooled hyper client, with rustls when the `tls` or `tls-aws-lc`
-/// feature is on.
+/// The built-in HTTP backend: a pooled hyper client, with rustls when the `tls-ring` or
+/// `tls-aws-lc` feature is on.
 ///
 /// It is what a client uses unless the builder is given another backend.
 pub struct Hyper {
@@ -57,7 +57,7 @@ impl Hyper {
         http.set_nodelay(true);
         http.enforce_http(false);
 
-        #[cfg(any(feature = "tls", feature = "tls-aws-lc"))]
+        #[cfg(any(feature = "tls-ring", feature = "tls-aws-lc"))]
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_provider_and_webpki_roots(provider())
             .map_err(|source| {
@@ -68,7 +68,7 @@ impl Hyper {
             .https_or_http()
             .enable_all_versions()
             .wrap_connector(http);
-        #[cfg(not(any(feature = "tls", feature = "tls-aws-lc")))]
+        #[cfg(not(any(feature = "tls-ring", feature = "tls-aws-lc")))]
         let connector = http;
 
         Ok(Self {

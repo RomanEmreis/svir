@@ -149,8 +149,8 @@ Everyday imports come from `svir::prelude`.
 | --- | --- |
 | none | Types, the codec, and tool sets (`Toolbox`, `Tools`); attachments in memory only |
 | `client` (default) | `Client`, `EventStream`, layers, the hyper and tokio transport (D25), attachments from disk |
-| `tls` (default) | HTTPS: rustls with the ring provider and the webpki roots |
-| `tls-aws-lc` | HTTPS with the aws-lc-rs provider in place of ring (D34) |
+| `tls-ring` | HTTPS: rustls with the ring provider and the webpki roots (D34) |
+| `tls-aws-lc` | HTTPS: rustls with the aws-lc-rs provider and the webpki roots (D34) |
 | `schemars` | `Tools::add`: tool input schemas derived from the types of handlers' arguments |
 | `tracing` | The `Trace` layer |
 | `testing` | `MockServer` (the conformance suite's scripted loopback server) and scripted event streams |
@@ -158,7 +158,8 @@ Everyday imports come from `svir::prelude`.
 A crate family is for later, when a second wire API or a heavy optional part justifies it.
 
 *Revised 2026-09-30: `svir-macros` and the `macros` feature were dropped with `#[tool]`. Revised
-2026-09-30: the transport is hyper, not reqwest, and `tls` is its own feature (D25).*
+2026-09-30: the transport is hyper, not reqwest, and `tls` is its own feature (D25). Revised
+2026-11-25, for 0.2: `tls` is `tls-ring`, and neither TLS feature is on by default (D34).*
 
 ### D15. Layers and middleware
 
@@ -324,9 +325,9 @@ redirects, proxy discovery, retries. hyper simply lacks them. Measured on a mini
 dependency tree and the clean build are about a third of the alternative's (46 crates against 89
 with TLS), and the TLS build needs no cmake.
 
-- `client`: HTTP/1.1. `tls` (default): HTTPS through rustls with the ring provider and the webpki
-  roots, and HTTP/2 by ALPN; `tls-aws-lc` is the same with aws-lc-rs (D34). Without either, an
-  `https` URL is a `Config` error.
+- `client`: HTTP/1.1. `tls-ring` and `tls-aws-lc`: HTTPS through rustls with the ring or the
+  aws-lc-rs provider and the webpki roots, and HTTP/2 by ALPN. Neither is on by default (D34).
+  Without either, an `https` URL is a `Config` error when the client is built.
 - What hyper does not give, a caller brings: `svir::http::Backend` is the little of HTTP svir
   uses (a request with a body of known length in, a status, headers, and a byte stream out), and
   `.http(backend)` on the client builder replaces the built-in transport. A proxy, client
@@ -454,19 +455,27 @@ failure: a connection that could not be made, a timeout, an error inside a strea
 `200`. It is for a proxy that answers with the upstream's status. Everything else acts on the
 kind, which means the same whatever the server; the status is kept beside it, not in place of it.
 
-### D34. The crypto provider is a feature, and always passed explicitly
+### D34. The crypto provider is the build's choice, and always passed explicitly
 
 rustls has two providers, ring and aws-lc-rs, and picks a process default only when exactly one
-of them is compiled in. A build that has both, because another dependency brings aws-lc-rs, has
-no default, and any code that calls `ClientConfig::builder()` without a provider panics. svir
-passed its provider explicitly from the start, but its `tls` feature compiled ring in, and that
-alone took the default away from the rest of the build.
+of them is compiled in. A build that has both, because another dependency brings the other one,
+has no default, and any code that calls `ClientConfig::builder()` without a provider panics. svir
+passed its provider explicitly from the start, but a TLS feature on by default compiled ring in,
+and that alone took the default away from a build that had aws-lc-rs already. Turning svir's
+default features off avoided it, but only for a build that knew to.
 
-- `tls` (default) keeps ring: it builds without a C toolchain on every platform.
-- `tls-aws-lc` uses aws-lc-rs instead. A build that has aws-lc-rs already turns the default
-  features off and takes `client` and `tls-aws-lc`, so one provider is compiled in and the
-  default is back. With both features on, aws-lc-rs is used.
+- Neither TLS feature is on by default. HTTPS is a choice the build makes, and only the provider
+  it chose is compiled in. `client` alone speaks plain HTTP, which is all a model server on
+  loopback needs (P4).
+- `tls-ring` uses ring: it builds without a C toolchain on every platform. `tls-aws-lc` uses
+  aws-lc-rs, for a build that has it already or wants it. With both on, aws-lc-rs is used.
 - Whichever it is, svir passes it to rustls explicitly and never depends on the default.
+- An `https` URL without either is `Config` when the client is built, and the error names both
+  features.
+
+*Revised 2026-11-25, for 0.2: `tls` was on by default and meant ring. It is now `tls-ring`, and
+neither TLS feature is on by default. The names say which provider each one is, and a manifest
+that names `tls` fails to resolve rather than quietly losing HTTPS.*
 
 ### D35. A filtered answer is its own finish reason; other answer-changing anomalies fail
 
@@ -779,6 +788,29 @@ next request carries its fields again, and the caller decides what to ask instea
 default, so D11 holds for everyone else, and it applies to `stream`, `complete`, and `send` alike.
 What a retried answer left out is not reported yet (O20).
 
+### D49. An image counts for no more than a set number of tokens in admission
+
+Resolves O5. Admission (P14) measures a request by its body length in bytes, which never
+underestimates text: a token is at least one byte. An image is different. Its base64 is a third
+longer than the file, and a model charges it by its dimensions, not its bytes: a 3 MB photo
+counted as 4 million tokens where a model charges a few hundred to a few thousand, and a request
+with one large image was refused though it fit.
+
+- An image counts as its base64 length, but no more than `image_tokens`: 16384 by default,
+  settable on the encoder and on the client builder. The rest of the body, the data URL's prefix
+  included, still counts by its bytes.
+- 16384 is the most the common open vision encoders make of one image at their default
+  resolution limits: a token for every 28 or 32 pixels square, up to 16384 of them. It keeps
+  admission from underestimating for them. Hosted APIs charge far less, roughly 1,500 to 5,000
+  at most; a caller that knows its model gives its own figure.
+- The cap is per image, and never raises an image's count: a thumbnail counts as its bytes.
+- No dimensions are read and nothing is decoded. An image from a file is measured by its size,
+  as before (P2).
+
+Not chosen: a fixed cost per image, which counts a thumbnail as much as a photo, and an estimator
+the caller supplies, which is a new public contract for what a caller with a tokenizer can do
+already, by leaving `context_tokens` unset and checking on its own.
+
 ### P1. Edition 2024; MSRV 1.85
 
 For a library meant for others, the lower the better, as long as nothing newer is needed. 1.85 is
@@ -880,10 +912,11 @@ recorded or declared length, or is a text file that is not UTF-8, fails the body
 
 ### P14. Admission
 
-With a context size configured, a request is admitted when the body length plus `max_tokens`
-fits in it and `max_tokens` is not 0; otherwise it fails with `ContextOverflow` before a byte is
-sent. A request without `max_tokens` reserves nothing for the answer. The body length in bytes
-stands in for its length in tokens, which it never underestimates (but see O5).
+With a context size configured, a request is admitted when its estimate plus `max_tokens` fits
+in it and `max_tokens` is not 0; otherwise it fails with `ContextOverflow` before a byte is sent.
+A request without `max_tokens` reserves nothing for the answer. The estimate is the body length
+in bytes, which never underestimates text, with each image counted as no more than
+`image_tokens` (D49).
 
 ### P15. Accepted as D20
 
@@ -893,8 +926,6 @@ stands in for its length in tokens, which it never underestimates (but see O5).
 
 ## Open
 
-- **O5. Admission for images.** Counting base64 bytes as tokens is conservative for text but
-  overestimates images by orders of magnitude.
 - **O6. Other wire APIs.** The client shape is settled (D13). Open: which APIs (OpenAI Responses,
   Anthropic Messages, ...), in what order, and how each maps the neutral types, for example
   `Effort` to a thinking budget.
@@ -916,7 +947,7 @@ stands in for its length in tokens, which it never underestimates (but see O5).
   a video to frames) is the application's. Open: the name (`Part::File` is the text file), the
   layout per wire API (Chat Completions `input_audio` and `file` parts; Anthropic's `document`
   and the Responses API's `input_file`, with O6), what servers accept, seen live, and admission
-  for large media (O5).
+  for large media (D49 covers images only).
 - **O19. A structured answer in one call.** `client.complete(&request).await?.parse()?` takes two
   steps and two error types, and nothing ties the type given to `parse` to the schema in the
   request. A helper that sets the format from a type and reads the answer back into it would
@@ -939,4 +970,4 @@ Resolved: O1 (API names and DX) by D13-D18, O2 (`<think>` splitting) by D23, O4 
 messages) by D19, O3 (compatibility retry versus context overflow) by D26, O8 (tool arguments)
 by D18, O11 (assistant content with tool calls) by D24, O13 (errors inside the stream) by D29,
 O15 (an overflow without a code) by D30, O16 (whitespace before the answer) by D31, O12
-(answer-changing anomalies in lenient mode) by D35, O14 (failed tool results) by D37.
+(answer-changing anomalies in lenient mode) by D35, O14 (failed tool results) by D37, O5 (admission for images) by D49.
