@@ -40,6 +40,22 @@ A few simple guidelines:
 
 Draft PRs are totally fine if you want early feedback.
 
+### The description
+
+Fill in the [template](.github/PULL_REQUEST_TEMPLATE.md); its comments say what goes where.
+Dry and to the point:
+
+- The title names the release it ships in (`0.2.0:`) or the kind of change (`fix:`, `doc:`),
+  and the main change in one clause. Decision IDs in parentheses are fine; the rest goes in
+  the body.
+- The summary starts with `Closes #N` when there is an issue, then says what changed and why
+  in a few sentences, one per change, citing decisions rather than retelling them.
+- Every checkbox stays, ticked or not. A note under a box only where it needs one: what
+  breaks, what was not run.
+- Notes for reviewers are short bullets: non-obvious choices, intentional omissions, what
+  needs a closer look.
+- The description is proportional to the diff: a small change gets a short one.
+
 ### The design record
 
 [docs/](docs/) is the design record, and it is kept true:
