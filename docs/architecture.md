@@ -40,7 +40,8 @@ In svir:
 - **Types**: messages with content parts, tool descriptors, tool calls, tool results, usage,
   finish reasons, and the typed error.
 - **Encoder**: a request becomes a byte stream with an exact length known before the first byte
-  is sent. The length doubles as the context-admission estimate (D10).
+  is sent. The length doubles as the context-admission estimate, with each image capped
+  (D10, D49).
 - **Decoder**: SSE framing, deltas, tool-call assembly, all three reasoning carriers, usage,
   mid-stream errors, and limits.
 - **Transport**: the HTTP request, authentication, status mapping, timeouts, and cancellation.
@@ -149,9 +150,10 @@ What goes into the body:
   when it is on. The defaults are not sent, nor is `none` without tools. A call required of a
   request that offers no tools, or of a tool it does not offer, is `Unsupported` (D40).
 
-Admission (P14): with `encoder.context_tokens(n)`, the length plus `max_tokens` must fit in the
-context size and `max_tokens` must not be 0, or the request fails with `ContextOverflow` before a
-byte is sent.
+Admission (P14): with `encoder.context_tokens(n)`, the estimate plus `max_tokens` must fit in
+the context size and `max_tokens` must not be 0, or the request fails with `ContextOverflow`
+before a byte is sent. The estimate is the length, with each image's base64 counted as no more
+than `encoder.image_tokens(n)`, 16384 by default (D49).
 
 ### 4.3 Decoder
 
@@ -280,9 +282,9 @@ requires a `text/event-stream` response before decoding. Layers wrap the adapter
 The HTTP itself is hyper, behind a seam (D25). `svir::http::Backend` is a trait with one method:
 send an `HttpRequest` (method, URL, headers, and a body of known length as a `BodyStream`) and
 return an `HttpResponse` (status, headers, and the body as a byte stream) once the headers have
-arrived. The built-in backend, `Hyper`, is a pooled hyper client, with rustls when the `tls` or
-`tls-aws-lc` feature is on; `.http(backend)` replaces it for a proxy, client certificates, or
-other roots.
+arrived. The built-in backend, `Hyper`, is a pooled hyper client, with rustls when the
+`tls-ring` or `tls-aws-lc` feature is on; `.http(backend)` replaces it for a proxy, client
+certificates, or other roots.
 Everything else sits above the seam and holds for any backend: the idle timeout, status mapping,
 compatibility learning, and decoding.
 
@@ -538,8 +540,8 @@ async fn ask(models: Dc<Models>, model: String, prompt: String) -> Result<String
 
 One crate, `svir`, with no procedural macros (D14). Without features: types and the codec.
 `client` (default): `Client`, `EventStream`, the HTTP seam, and the hyper and tokio transport.
-`tls` (default): HTTPS through rustls with ring; `tls-aws-lc`: the same with aws-lc-rs (D34).
-`schemars` (`Tools::add`), `tracing` (the `Trace` layer),
+`tls-ring` and `tls-aws-lc`: HTTPS through rustls with ring or with aws-lc-rs, neither on by
+default (D34). `schemars` (`Tools::add`), `tracing` (the `Trace` layer),
 and `testing` (a `MockServer` and scripted event streams for the caller's own tests, not yet
 written) are opt-in.
 

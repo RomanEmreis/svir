@@ -36,14 +36,14 @@ jobs:
     # one is found by the row that leaves the other out.
     steps:
       - uses: actions/checkout@v4
-      - name: Run Clippy with the default features
+      - name: Run Clippy with the default features, the client without TLS
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Run Clippy on the codec alone
         run: cargo clippy --locked --no-default-features --all-targets -- -D warnings
-      - name: Run Clippy on the client without TLS
-        run: cargo clippy --locked --no-default-features --features client --all-targets -- -D warnings
-      - name: Run Clippy with aws-lc-rs in place of ring
-        run: cargo clippy --locked --no-default-features --features tls-aws-lc --all-targets -- -D warnings
+      - name: Run Clippy with TLS through ring
+        run: cargo clippy --locked --features tls-ring --all-targets -- -D warnings
+      - name: Run Clippy with TLS through aws-lc-rs
+        run: cargo clippy --locked --features tls-aws-lc --all-targets -- -D warnings
       - name: Run Clippy with all features
         run: cargo clippy --locked --all-features --all-targets -- -D warnings
 
@@ -110,16 +110,16 @@ jobs:
     # scripted loopback server. `tests/live.rs` is ignored unless asked for.
     steps:
       - uses: actions/checkout@v4
-      - name: Run tests with the default features
+      - name: Run tests with the default features, the client without TLS
         run: cargo test --locked
       - name: Run tests with all features
         run: cargo test --locked --all-features
       - name: Run tests of the codec alone
         run: cargo test --locked --no-default-features
-      - name: Run tests of the client without TLS
-        run: cargo test --locked --no-default-features --features client
-      - name: Run tests with aws-lc-rs in place of ring
-        run: cargo test --locked --no-default-features --features tls-aws-lc
+      - name: Run tests with TLS through ring
+        run: cargo test --locked --features tls-ring
+      - name: Run tests with TLS through aws-lc-rs
+        run: cargo test --locked --features tls-aws-lc
 
   cross_platform:
     needs: [clippy_check, doc_check]

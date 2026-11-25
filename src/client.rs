@@ -99,6 +99,8 @@ struct Inner<B> {
     limits: Limits,
     think: Think,
     context: Option<u64>,
+    /// The most one image counts for in admission; the encoder's default when `None`.
+    image_tokens: Option<u64>,
     /// The server rejected the optional fields once; they are left out from now on.
     lean: AtomicBool,
 }
@@ -126,6 +128,7 @@ impl Client {
             limits: Limits::default(),
             think: Think::default(),
             context: None,
+            image_tokens: None,
             connect_timeout: CONNECT_TIMEOUT,
             idle_timeout: Some(IDLE_TIMEOUT),
             http: Http::BuiltIn(Hyper::new),
@@ -248,6 +251,9 @@ impl<B: Backend> Client<B> {
         if let Some(context) = inner.context {
             encoder = encoder.context_tokens(context);
         }
+        if let Some(tokens) = inner.image_tokens {
+            encoder = encoder.image_tokens(tokens);
+        }
         let body = encoder.encode_files(request).await?;
         let body = HttpBody {
             length: body.len(),
@@ -349,6 +355,7 @@ pub struct ClientBuilder<B = Hyper> {
     limits: Limits,
     think: Think,
     context: Option<u64>,
+    image_tokens: Option<u64>,
     connect_timeout: Duration,
     idle_timeout: Option<Duration>,
     http: Http<B>,
@@ -466,8 +473,20 @@ impl<B> ClientBuilder<B> {
     }
 
     /// Sets the model's context size, so a request that cannot fit fails before it is sent.
+    ///
+    /// The request is measured by its body length in bytes, which never underestimates text,
+    /// with each image counted as no more than [`image_tokens`](Self::image_tokens).
     pub fn context_tokens(mut self, tokens: u64) -> Self {
         self.context = Some(tokens);
+        self
+    }
+
+    /// Sets the most one image counts for when a request is measured against
+    /// [`context_tokens`](Self::context_tokens): its base64 length, but no more than this many
+    /// tokens. 16384 by default, the most the common vision encoders make of one image at their
+    /// default settings; hosted APIs charge far less.
+    pub fn image_tokens(mut self, tokens: u64) -> Self {
+        self.image_tokens = Some(tokens);
         self
     }
 
@@ -512,6 +531,7 @@ impl<B> ClientBuilder<B> {
             limits: self.limits,
             think: self.think,
             context: self.context,
+            image_tokens: self.image_tokens,
             connect_timeout: self.connect_timeout,
             idle_timeout: self.idle_timeout,
             http: Http::Given(backend),
@@ -551,6 +571,7 @@ impl<B> ClientBuilder<B> {
                 limits: self.limits,
                 think: self.think,
                 context: self.context,
+                image_tokens: self.image_tokens,
                 lean: AtomicBool::new(false),
             }),
         })
@@ -729,9 +750,9 @@ fn base_url(url: &str, allow_http: bool) -> Result<String, Error> {
         "http" => false,
         _ => return Err(config("the base URL is not http or https")),
     };
-    if secure && !cfg!(any(feature = "tls", feature = "tls-aws-lc")) {
+    if secure && !cfg!(any(feature = "tls-ring", feature = "tls-aws-lc")) {
         return Err(config(
-            "an https URL needs the `tls` or the `tls-aws-lc` feature",
+            "an https URL needs the `tls-ring` or the `tls-aws-lc` feature",
         ));
     }
     if !secure && !allow_http && !is_loopback(authority.host()) {
@@ -775,6 +796,22 @@ mod tests {
             base_url("http://localhost:8080/openai/v1", false).unwrap(),
             "http://localhost:8080/openai"
         );
+    }
+
+    #[test]
+    fn an_https_url_needs_a_tls_feature() {
+        let base = base_url("https://api.example.com/v1", false);
+
+        if cfg!(any(feature = "tls-ring", feature = "tls-aws-lc")) {
+            assert_eq!(base.unwrap(), "https://api.example.com");
+        } else {
+            let error = base.unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::Config);
+            assert_eq!(
+                error.detail(),
+                Some("an https URL needs the `tls-ring` or the `tls-aws-lc` feature")
+            );
+        }
     }
 
     #[test]

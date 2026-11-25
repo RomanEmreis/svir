@@ -33,6 +33,9 @@ fn encoder(case: &Value, block: Option<usize>) -> Encoder {
     if let Some(tokens) = options["context_tokens"].as_u64() {
         encoder = encoder.context_tokens(tokens);
     }
+    if let Some(tokens) = options["image_tokens"].as_u64() {
+        encoder = encoder.image_tokens(tokens);
+    }
     encoder
 }
 

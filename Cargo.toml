@@ -1,6 +1,6 @@
 [package]
 name = "svir"
-version = "0.1.7"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 description = "A small, composable SDK for talking to large language models"
@@ -18,24 +18,25 @@ exclude = [".github/", ".gitattributes"]
 all-features = true
 
 [features]
-default = ["client", "tls"]
+default = ["client"]
 # `Client`, `EventStream`, the hyper transport, and attachments read from disk.
 client = ["dep:futures-core", "dep:hyper", "dep:hyper-util", "dep:tokio"]
 # Tool input schemas derived from the types of handlers' arguments.
 schemars = ["dep:schemars"]
 # The `Trace` layer.
 tracing = ["client", "dep:tracing"]
-# HTTPS, through rustls with the ring provider and the webpki roots.
-tls = ["client", "dep:hyper-rustls", "dep:rustls", "hyper-rustls/ring", "rustls/ring", "hyper/http2", "hyper-util/http2"]
-# HTTPS with the aws-lc-rs provider in place of ring, for a build that has it already. With both
-# on, aws-lc-rs is used; turning the default features off keeps ring out of the build.
+# HTTPS, through rustls with the ring provider and the webpki roots. Off by default: a build
+# takes this or `tls-aws-lc`, so only the provider it chose is compiled in.
+tls-ring = ["client", "dep:hyper-rustls", "dep:rustls", "hyper-rustls/ring", "rustls/ring", "hyper/http2", "hyper-util/http2"]
+# HTTPS through rustls with the aws-lc-rs provider and the webpki roots. With both on, aws-lc-rs
+# is used.
 tls-aws-lc = ["client", "dep:hyper-rustls", "dep:rustls", "hyper-rustls/aws-lc-rs", "rustls/aws_lc_rs", "hyper/http2", "hyper-util/http2"]
 
 [dependencies]
 base64 = "0.23.1"
-bytes = "1.12.1"
+bytes = "1.12.2"
 futures-core = { version = "0.3.34", default-features = false, features = ["std"], optional = true }
-hyper = { version = "1.12.0", features = ["client", "http1"], optional = true }
+hyper = { version = "1.13.0", features = ["client", "http1"], optional = true }
 hyper-rustls = { version = "0.27.10", default-features = false, features = ["http1", "http2", "tls12", "webpki-roots"], optional = true }
 hyper-util = { version = "0.1.21", features = ["client-legacy", "http1", "tokio"], optional = true }
 rustls = { version = "0.23.46", default-features = false, features = ["std", "tls12"], optional = true }

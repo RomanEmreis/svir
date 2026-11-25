@@ -1,0 +1,26 @@
+{
+  "description": "An image shorter than image_tokens counts as its encoded length: the cap never counts an image as more than its bytes.",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "messages": [{"role": "user", "parts": [{"text": "What is this?"}, {"image": "pixel"}]}]
+  },
+  "attachments": {"pixel": {"media_type": "image/png", "hex": "89504e470d0a1a0a"}},
+  "options": {"context_tokens": 217, "image_tokens": 1000},
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "max_tokens": 16,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {"type": "text", "text": "What is this?"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}}
+          ]
+        }
+      ]
+    }
+  }
+}

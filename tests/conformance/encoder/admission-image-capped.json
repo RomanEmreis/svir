@@ -1,0 +1,29 @@
+{
+  "description": "Each image counts no more than image_tokens, so a request is admitted though its image bytes alone would not fit.",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "messages": [{"role": "user", "parts": [{"image": "a"}, {"image": "b"}]}]
+  },
+  "attachments": {
+    "a": {"media_type": "image/png", "hex": "89504e470d0a1a0a0000000d494844520000000100000001"},
+    "b": {"media_type": "image/png", "hex": "89504e470d0a1a0a0000000d494844520000000200000002"}
+  },
+  "options": {"context_tokens": 240, "image_tokens": 4},
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "max_tokens": 16,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"}},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAAC"}}
+          ]
+        }
+      ]
+    }
+  }
+}

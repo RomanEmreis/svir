@@ -211,8 +211,9 @@ async fn run(dir: &Path, case: &Value) -> Vec<String> {
 
     if let Some(want) = case.get("expect_config") {
         for url in urls {
-            // Without the `tls` feature an https URL is refused, whatever the case expects.
-            if url.starts_with("https:") && !cfg!(any(feature = "tls", feature = "tls-aws-lc")) {
+            // Without a TLS feature an https URL is refused, whatever the case expects.
+            if url.starts_with("https:") && !cfg!(any(feature = "tls-ring", feature = "tls-aws-lc"))
+            {
                 continue;
             }
             let got = match client(config, url) {

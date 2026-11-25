@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.2.0
+
+### Added
+
+* **`image_tokens`** on `ClientBuilder` and `Encoder`: the most one image
+  counts for when a request is measured against `context_tokens`. An image
+  counts as its base64 length, but no more than this; 16384 by default, the
+  most the common open vision encoders make of one image. A model that
+  charges less, as hosted APIs do, can be given its own figure (D49).
+
+### Changed
+
+* **No TLS by default, and `tls` is now `tls-ring`.** The default features
+  are `client` alone, which speaks plain HTTP: all a model server on loopback
+  needs. HTTPS takes `tls-ring` or `tls-aws-lc`, so only the provider the
+  build chose is compiled in, and rustls keeps its process default. Without
+  either, an `https` URL is `ErrorKind::Config` when the client is built.
+  To upgrade: on the default features with an `https` URL, add
+  `features = ["tls-ring"]`; a manifest that names `tls` renames it to
+  `tls-ring`; `default-features = false, features = ["client", "tls-aws-lc"]`
+  can become `features = ["tls-aws-lc"]` (D34).
+* **An image counts for 16384 tokens at most in context admission.** It
+  counted as its base64 length, so a 3 MB photo was 4 million tokens, and
+  `context_tokens` refused a request with one though it fit. Such a request
+  is admitted now. Text counts as before, by its bytes (D49).
+
 ## 0.1.7
 
 ### Added
