@@ -1,0 +1,48 @@
+{
+  "description": "Calls take their IDs and names from the block start and their arguments from the joined pieces, or the starting input when none came.",
+  "file": "tools.sse",
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "tool_calls",
+        "text": "Let me check.",
+        "calls": [
+          {
+            "id": "toolu_1",
+            "name": "lookup",
+            "arguments": "{\"city\": \"Paris\"}"
+          },
+          {
+            "id": "toolu_2",
+            "name": "now",
+            "arguments": "{}"
+          }
+        ],
+        "parts": [
+          {
+            "text": "Let me check."
+          },
+          {
+            "tool_call": {
+              "id": "toolu_1",
+              "name": "lookup",
+              "arguments": "{\"city\": \"Paris\"}"
+            }
+          },
+          {
+            "tool_call": {
+              "id": "toolu_2",
+              "name": "now",
+              "arguments": "{}"
+            }
+          }
+        ],
+        "usage": {
+          "input": 50,
+          "output": 33
+        }
+      }
+    },
+    "lenient": "same"
+  }
+}

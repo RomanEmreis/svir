@@ -1,0 +1,44 @@
+{
+  "description": "Without a key, no credential header is sent.",
+  "config": {
+    "base_url": "{server}"
+  },
+  "server": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "body_file": "../decoder/text.sse"
+    }
+  ],
+  "calls": [
+    {
+      "expect": {
+        "completion": {
+          "finish": "stop",
+          "text": "Rivers meander.",
+          "parts": [
+            {
+              "text": "Rivers meander."
+            }
+          ],
+          "usage": {
+            "input": 25,
+            "output": 12
+          }
+        }
+      }
+    }
+  ],
+  "expect_requests": [
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "absent_headers": [
+        "authorization",
+        "x-api-key"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "description": "A redacted block goes back with its data.",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "hi"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "parts": [
+          {
+            "reasoning": {
+              "source": "redacted_thinking",
+              "text": "",
+              "signature": "enc-xyz"
+            }
+          },
+          {
+            "text": "Fine."
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "And?"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "max_tokens": 16,
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "redacted_thinking",
+              "data": "enc-xyz"
+            },
+            {
+              "type": "text",
+              "text": "Fine."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "And?"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

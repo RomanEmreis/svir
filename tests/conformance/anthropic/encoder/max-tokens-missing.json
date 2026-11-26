@@ -1,0 +1,19 @@
+{
+  "description": "The Messages API needs max_tokens: Unsupported before anything is sent (D53).",
+  "request": {
+    "model": "m",
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "hi"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "error": "unsupported"
+  }
+}

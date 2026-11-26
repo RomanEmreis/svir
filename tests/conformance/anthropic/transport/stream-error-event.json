@@ -1,0 +1,31 @@
+{
+  "description": "An error event after a 200 fails the stream as Server, with no status (D29, D33).",
+  "config": {
+    "base_url": "{server}"
+  },
+  "server": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_01\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"m\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":10,\"output_tokens\":1}}}\n\nevent: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n"
+    }
+  ],
+  "calls": [
+    {
+      "expect": {
+        "error": "server",
+        "retryable": false,
+        "status": null,
+        "message": "Overloaded"
+      }
+    }
+  ],
+  "expect_requests": [
+    {
+      "method": "POST",
+      "path": "/v1/messages"
+    }
+  ]
+}

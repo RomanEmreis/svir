@@ -1,0 +1,60 @@
+{
+  "description": "Tools are name, description, and input_schema; a required tool is {type: tool, name}.",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "tools": [
+      {
+        "name": "lookup",
+        "description": "Looks a city up.",
+        "input_schema": {
+          "type": "object"
+        }
+      }
+    ],
+    "tool_choice": {
+      "tool": "lookup"
+    },
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "hi"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "max_tokens": 16,
+      "stream": true,
+      "tools": [
+        {
+          "name": "lookup",
+          "description": "Looks a city up.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "tool_choice": {
+        "type": "tool",
+        "name": "lookup"
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

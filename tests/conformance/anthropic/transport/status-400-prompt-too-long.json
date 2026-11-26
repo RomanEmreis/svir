@@ -1,0 +1,45 @@
+{
+  "description": "A prompt over the context window is a context overflow, told by its message (D30), and not retried.",
+  "config": {
+    "base_url": "{server}"
+  },
+  "server": [
+    {
+      "status": 400,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"type\": \"error\", \"error\": {\"type\": \"invalid_request_error\", \"message\": \"prompt is too long: 210000 tokens > 200000 maximum\"}, \"request_id\": \"req_1\"}"
+    }
+  ],
+  "calls": [
+    {
+      "request": {
+        "model": "m",
+        "max_tokens": 16,
+        "reasoning_effort": "low",
+        "messages": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "hi"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "error": "context_overflow",
+        "retryable": false,
+        "status": 400
+      }
+    }
+  ],
+  "expect_requests": [
+    {
+      "method": "POST",
+      "path": "/v1/messages"
+    }
+  ]
+}

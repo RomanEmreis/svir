@@ -1,0 +1,43 @@
+{
+  "description": "A level turns adaptive thinking on, shown as a summary, at that effort (D52).",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "reasoning_effort": "max",
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "hi"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "max_tokens": 16,
+      "stream": true,
+      "thinking": {
+        "type": "adaptive",
+        "display": "summarized"
+      },
+      "output_config": {
+        "effort": "max"
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

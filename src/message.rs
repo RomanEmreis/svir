@@ -74,9 +74,17 @@ impl Message {
 }
 
 impl From<Completion> for Message {
-    /// The model's answer as the next request needs it: reasoning, text, then tool calls. Calls
-    /// the output limit cut off are left out: there are no results for them.
+    /// The model's answer as the next request needs it: its parts in the order they arrived, or
+    /// reasoning, text, then tool calls when the completion records no order. Calls the output
+    /// limit cut off are left out: there are no results for them.
     fn from(done: Completion) -> Self {
+        if !done.parts.is_empty() {
+            return Self {
+                role: Role::Assistant,
+                parts: done.parts,
+            };
+        }
+
         let mut parts = Vec::with_capacity(done.reasoning.len() + 1 + done.calls.len());
         parts.extend(done.reasoning.into_iter().map(Part::Reasoning));
         if !done.text.is_empty() {
@@ -409,6 +417,26 @@ mod tests {
                 Part::ToolCall(ToolCall::new("call-a", "lookup", r#"{"value":1}"#)),
             ]
         );
+    }
+
+    #[test]
+    fn a_completion_with_parts_goes_back_in_their_order() {
+        let thinking = Reasoning::new(ReasoningSource::Thinking, "plan").signature("sig");
+        let call = ToolCall::new("toolu_1", "now", "{}");
+        let parts = vec![
+            Part::Text("First.".into()),
+            Part::Reasoning(thinking.clone()),
+            Part::ToolCall(call.clone()),
+            Part::Text(" Then.".into()),
+        ];
+
+        let mut done = Completion::new(FinishReason::ToolCalls);
+        done.text = "First. Then.".into();
+        done.reasoning = vec![thinking];
+        done.calls = vec![call];
+        done.parts = parts.clone();
+
+        assert_eq!(Message::from(done).parts, parts);
     }
 
     #[test]

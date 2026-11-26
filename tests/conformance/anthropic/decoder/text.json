@@ -1,0 +1,22 @@
+{
+  "description": "A text answer: ping skipped, the cache counts added to the input, the output a running total.",
+  "file": "text.sse",
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "stop",
+        "text": "Rivers meander.",
+        "parts": [
+          {
+            "text": "Rivers meander."
+          }
+        ],
+        "usage": {
+          "input": 25,
+          "output": 12
+        }
+      }
+    },
+    "lenient": "same"
+  }
+}

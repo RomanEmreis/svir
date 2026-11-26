@@ -1,5 +1,6 @@
-//! Runs the transport cases of the conformance suite: `tests/conformance/transport/*.json`, in
-//! the format described in `tests/conformance/README.md`, against a scripted server on loopback.
+//! Runs the transport cases of the conformance suite: `tests/conformance/transport/*.json` for
+//! Chat Completions and `tests/conformance/anthropic/transport/*.json` for Messages, in the format
+//! described in `tests/conformance/README.md`, against a scripted server on loopback.
 
 #![cfg(feature = "client")]
 #![allow(clippy::unwrap_used)]
@@ -11,12 +12,23 @@ use std::time::{Duration, Instant};
 
 use common::{Attachments, server::Server};
 use serde_json::{Value, json};
-use svir::{Client, Error, Event};
+use svir::{Client, Error, Event, Request};
+
+/// The wire API of a directory of cases.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Api {
+    Chat,
+    Messages,
+}
 
 /// Builds the client a case describes, with the usage default off: the suite's notation sends a
 /// field only when the request sets it.
-fn client(config: &Value, base_url: &str) -> Result<Client, Error> {
-    let mut builder = Client::openai(base_url).include_usage(false);
+fn client(api: Api, config: &Value, base_url: &str) -> Result<Client, Error> {
+    let builder = match api {
+        Api::Chat => Client::openai(base_url),
+        Api::Messages => Client::anthropic().base_url(base_url),
+    };
+    let mut builder = builder.include_usage(false);
     if let Some(key) = config["api_key"].as_str() {
         builder = builder.api_key(key);
     }
@@ -48,7 +60,7 @@ fn failed(error: &Error, text: &str, reasoning: &str) -> Value {
 
 /// Makes one call and returns what happened, in the suite's outcome notation, with every error
 /// seen on the way.
-async fn call(client: &Client, call: &Value, errors: &mut Vec<String>) -> Value {
+async fn call(api: Api, client: &Client, call: &Value, errors: &mut Vec<String>) -> Value {
     let mut note = |error: &Error| errors.push(format!("{error} {error:?}"));
 
     if call.get("list_models").is_some() {
@@ -63,7 +75,7 @@ async fn call(client: &Client, call: &Value, errors: &mut Vec<String>) -> Value 
 
     let request = match call.get("request") {
         Some(notation) => common::request(notation, None, &Value::Null, &Attachments::Memory),
-        None => common::default_request(),
+        None => default_request(api),
     };
 
     let (mut text, mut reasoning) = (String::new(), String::new());
@@ -130,6 +142,14 @@ async fn call(client: &Client, call: &Value, errors: &mut Vec<String>) -> Value 
     json!({"pending": true, "partial": {"text": text, "reasoning": reasoning}})
 }
 
+/// The request a call makes when it gives none: the Messages API needs `max_tokens`.
+fn default_request(api: Api) -> Request {
+    match api {
+        Api::Chat => common::default_request(),
+        Api::Messages => common::default_request().max_tokens(16),
+    }
+}
+
 /// Differences between an expected outcome and what a call produced.
 fn compare(expected: &Value, got: &Value, elapsed: Duration) -> Vec<String> {
     let mut diffs = Vec::new();
@@ -188,7 +208,7 @@ fn compare(expected: &Value, got: &Value, elapsed: Duration) -> Vec<String> {
     diffs
 }
 
-async fn run(dir: &Path, case: &Value) -> Vec<String> {
+async fn run(api: Api, dir: &Path, case: &Value) -> Vec<String> {
     let config = &case["config"];
     let urls: Vec<&str> = match &config["base_url"] {
         Value::Array(list) => list.iter().map(|url| url.as_str().unwrap()).collect(),
@@ -216,7 +236,7 @@ async fn run(dir: &Path, case: &Value) -> Vec<String> {
             {
                 continue;
             }
-            let got = match client(config, url) {
+            let got = match client(api, config, url) {
                 Ok(_) => "accepted",
                 Err(_) => "rejected",
             };
@@ -229,7 +249,7 @@ async fn run(dir: &Path, case: &Value) -> Vec<String> {
 
     for url in urls {
         let server = Server::start(dir, case["server"].as_array().unwrap()).await;
-        let client = match client(config, &url.replace("{server}", &server.base)) {
+        let client = match client(api, config, &url.replace("{server}", &server.base)) {
             Ok(client) => client,
             Err(error) => {
                 diffs.push(format!("{url}: the client was not built: {error}"));
@@ -241,7 +261,7 @@ async fn run(dir: &Path, case: &Value) -> Vec<String> {
         for step in case["calls"].as_array().unwrap() {
             let expected = &step["expect"];
             let started = Instant::now();
-            let got = call(&client, step, &mut shown).await;
+            let got = call(api, &client, step, &mut shown).await;
             // An open expectation still makes its call; only the outcome is not compared.
             if expected.get("open").is_none() {
                 diffs.extend(compare(expected, &got, started.elapsed()));
@@ -270,7 +290,17 @@ async fn run(dir: &Path, case: &Value) -> Vec<String> {
 
 #[tokio::test]
 async fn transport_conformance() {
-    let (dir, cases) = common::cases("transport");
+    conformance(Api::Chat, "transport", 40).await;
+}
+
+#[tokio::test]
+async fn messages_transport_conformance() {
+    conformance(Api::Messages, "anthropic/transport", 8).await;
+}
+
+/// Runs the cases of `directory`, of which there must be more than `least`.
+async fn conformance(api: Api, directory: &str, least: usize) {
+    let (dir, cases) = common::cases(directory);
     let (mut failures, mut pending) = (Vec::new(), Vec::new());
 
     for (name, case) in &cases {
@@ -283,7 +313,7 @@ async fn transport_conformance() {
         for decision in skipped {
             pending.push(format!("{name}: open {decision}"));
         }
-        for diff in run(&dir, case).await {
+        for diff in run(api, &dir, case).await {
             let line = format!("{name}: {diff}");
             if open {
                 pending.push(line)
@@ -296,7 +326,7 @@ async fn transport_conformance() {
     for line in &pending {
         eprintln!("pending: {line}");
     }
-    assert!(cases.len() > 40, "only {} cases", cases.len());
+    assert!(cases.len() > least, "only {} cases", cases.len());
     assert!(
         failures.is_empty(),
         "{} failures:\n{}",

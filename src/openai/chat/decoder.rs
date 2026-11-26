@@ -1,25 +1,24 @@
 //! The Chat Completions answer stream, decoded.
 
 use std::{
-    borrow::Cow,
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     time::{Duration, Instant},
 };
 
 use serde_json::{Map, Value};
 
-use super::{
-    overflow,
-    sse::Framer,
-    think::ThinkSplitter,
-    wire::{
-        CHOICES, CONTENT, DELTA, ERROR, FINISH_REASON, FUNCTION, FUNCTION_TYPE, ID, INDEX, MESSAGE,
-        REASONING, REASONING_CONTENT, REFUSAL, ROLE, TOOL_CALLS, TYPE,
-    },
+use super::wire::{
+    CHOICES, CONTENT, DELTA, FINISH_REASON, FUNCTION, FUNCTION_TYPE, ID, INDEX, REASONING,
+    REASONING_CONTENT, REFUSAL, ROLE, TOOL_CALLS,
 };
 use crate::{
     Completion, Error, ErrorKind, Event, FinishReason, Limits, Mode, Reasoning, ReasoningSource,
-    Think, Timing, ToolCall, ToolCallDelta, Usage,
+    Think, Timing, ToolCallDelta, Usage,
+    decode::{PartialCall, over_call_limit, settle},
+    overflow::{error_event, server_error},
+    sse::{self, Framer},
+    think::ThinkSplitter,
+    wire::{ERROR, TYPE},
 };
 
 /// Reads a Chat Completions answer stream: bytes in, events out.
@@ -80,13 +79,6 @@ enum State {
     Open,
     Completed,
     Failed,
-}
-
-#[derive(Debug, Default)]
-struct PartialCall {
-    id: String,
-    name: String,
-    arguments: String,
 }
 
 impl Decoder {
@@ -184,19 +176,12 @@ impl Decoder {
     }
 
     fn event(&mut self, data: &[u8], out: &mut Vec<Result<Event, Error>>) -> Result<(), Error> {
-        let text: Cow<'_, str> = match std::str::from_utf8(data) {
-            Ok(text) => Cow::Borrowed(text),
-            Err(_) if !self.is_strict() => String::from_utf8_lossy(data),
-            Err(_) => return Err(protocol("an event is not valid UTF-8")),
-        };
-        let text = text.trim();
-        if text == "[DONE]" {
+        let text = sse::text(data, self.mode)?;
+        if text.trim() == "[DONE]" {
             return self.done(out);
         }
-        let chunk = match serde_json::from_str::<Value>(text) {
-            Ok(Value::Object(chunk)) => chunk,
-            _ if !self.is_strict() => return Ok(()),
-            _ => return Err(protocol("an event is not a JSON object")),
+        let Some(chunk) = sse::object(&text, self.mode)? else {
+            return Ok(());
         };
 
         // A chunk contributes all of its events or, on an error, none.
@@ -474,8 +459,7 @@ impl Decoder {
             .ok_or_else(|| protocol("a tool call has no index"))?;
 
         if index >= self.limits.tool_calls as u64 {
-            return Err(Error::new(ErrorKind::ResponseLimit)
-                .with_detail("more tool calls than the tool-call limit"));
+            return Err(over_call_limit());
         }
         if present(fields, TYPE).is_some_and(|kind| kind != FUNCTION_TYPE) {
             return Err(unsupported("a tool call that is not a function"));
@@ -549,47 +533,14 @@ impl Decoder {
             finish => finish,
         };
 
-        // The output limit may have cut any call short, even before its ID or name arrived: none
-        // is executable, and each is kept as far as it arrived (D47).
-        let cut = finish == FinishReason::Length;
-        let mut ids = HashSet::new();
-        let mut calls = Vec::with_capacity(self.calls.len());
-        let mut cut_calls = Vec::new();
+        let mut partial = Vec::with_capacity(self.calls.len());
         for (expected, (index, call)) in (0u64..).zip(std::mem::take(&mut self.calls)) {
             if index != expected {
                 return Err(protocol("tool call indices are not contiguous"));
             }
-            if !cut && (call.id.is_empty() || call.name.is_empty()) {
-                return Err(protocol("a tool call has no ID or no name"));
-            }
-            if !call.id.is_empty() && !ids.insert(call.id.clone()) {
-                return Err(protocol("two tool calls share an ID"));
-            }
-
-            if cut {
-                let mut delta = ToolCallDelta::new(index as usize, call.arguments);
-                delta.id = Some(call.id).filter(|id| !id.is_empty());
-                delta.name = Some(call.name).filter(|name| !name.is_empty());
-                cut_calls.push(delta);
-            } else {
-                calls.push(ToolCall::new(call.id, call.name, call.arguments));
-            }
+            partial.push(call);
         }
-
-        if self.refused && !calls.is_empty() {
-            return Err(protocol("a refusal with tool calls"));
-        }
-
-        // OpenAI and vLLM finish a call of the function the request named with stop: an answer
-        // that is calls finishes with them all the same (D45).
-        let finish = match finish {
-            FinishReason::Stop if !calls.is_empty() => FinishReason::ToolCalls,
-            finish => finish,
-        };
-        if finish != FinishReason::Length && (finish == FinishReason::ToolCalls) == calls.is_empty()
-        {
-            return Err(protocol("the finish reason does not match the tool calls"));
-        }
+        let (finish, calls, cut_calls) = settle(finish, self.refused, partial)?;
 
         let mut events = Vec::new();
         if let Some((reasoning, tail)) = self.think.as_mut().and_then(ThinkSplitter::flush) {
@@ -689,41 +640,6 @@ fn finish_reason(reason: &Value) -> Result<FinishReason, Error> {
         Some("content_filter") => Ok(FinishReason::ContentFilter),
         Some(_) => Err(unsupported("a finish reason outside the protocol")),
         None => Err(protocol("a finish reason is not a string")),
-    }
-}
-
-/// An error the server reported inside an open stream: a failure of its own (D29), unless it
-/// says that the request did not fit in the context (D30).
-fn server_error(error: &Value) -> Error {
-    let message = error
-        .get(MESSAGE)
-        .and_then(Value::as_str)
-        .or_else(|| error.as_str());
-    let reported = if overflow::is_overflow(error) {
-        Error::new(ErrorKind::ContextOverflow).with_detail("reported inside the stream")
-    } else {
-        Error::new(ErrorKind::Server)
-    };
-
-    match message.filter(|message| !message.is_empty()) {
-        Some(message) => reported.with_server_message(message),
-        None => reported,
-    }
-}
-
-/// An `error` event. Whatever its data, the stream has failed: the data is the server's error
-/// object, or an object with the message, or the message itself.
-fn error_event(data: &[u8]) -> Error {
-    let text = String::from_utf8_lossy(data);
-    let text = text.trim();
-
-    match serde_json::from_str::<Value>(text) {
-        Ok(Value::Object(body)) => match present(&body, ERROR) {
-            Some(error) => server_error(error),
-            None => server_error(&Value::Object(body)),
-        },
-        Ok(Value::String(message)) => server_error(&Value::String(message)),
-        _ => server_error(&Value::String(text.to_owned())),
     }
 }
 

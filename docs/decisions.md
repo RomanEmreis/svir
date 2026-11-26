@@ -100,8 +100,8 @@ a builder:
 
 - `Client::openai(url)` for OpenAI-compatible servers. The URL is required: compatible servers
   live anywhere.
-- `Client::anthropic()` and others later (O6): the hosted API by default, `.base_url()` to
-  override.
+- `Client::anthropic()` for the Anthropic Messages API (D50): the hosted API by default,
+  `.base_url()` to override. Others later (O6).
 
 `.build()?` validates the URL (P4), resolves the key (D17), and assembles the layers (D15), once.
 Builder methods have plain names (`api_key`, `layer`, `wrap`); `with()` is reserved for adding
@@ -127,7 +127,8 @@ accept a `Request` or a `&Request`.
 
 `Effort` is `Off`, `Minimal`, `Low`, `Medium`, `High`, `XHigh`, or `Max` (D46). Each adapter
 maps it explicitly: Chat Completions sends `reasoning_effort` (`Off` as `none`); an API that takes
-a thinking budget uses a documented, tested table.
+a thinking budget uses a documented, tested table. The Messages API takes adaptive thinking and an
+effort level instead (D52).
 
 **Messages.** `Message::user(text).with(part)`, parts kept in the order given (P12). Attachments do
 no I/O when created: `Image::path(p)` and `TextFile::path(p)` record the path, and the size is
@@ -155,7 +156,8 @@ Everyday imports come from `svir::prelude`.
 | `tracing` | The `Trace` layer |
 | `testing` | `MockServer` (the conformance suite's scripted loopback server) and scripted event streams |
 
-A crate family is for later, when a second wire API or a heavy optional part justifies it.
+A crate family is for later, when a second wire API or a heavy optional part justifies it. A
+wire API is not a feature unless it brings dependencies of its own (D56).
 
 *Revised 2026-09-30: `svir-macros` and the `macros` feature were dropped with `#[tool]`. Revised
 2026-09-30: the transport is hyper, not reqwest, and `tls` is its own feature (D25). Revised
@@ -415,7 +417,8 @@ is `ContextOverflow` when any of these holds:
 - `error.code` or `error.type` is `context_length_exceeded`, `context_window_exceeded`, or
   `exceed_context_size_error`;
 - the message speaks of the `context length`, the `context size`, the `context window`, or the
-  `context budget`, or of `compacted context`, in any letter case.
+  `context budget`, or of `compacted context`, or says the `prompt is too long`, in any letter
+  case.
 
 This applies to the body of a 400, 413, or 422, and to an error inside the stream (D29), which is
 how LM Studio reports an overflow. On any other status the body does not change the kind: a 500
@@ -426,7 +429,8 @@ Matching words is looser than matching a code, on purpose. The lists live in one
 non-retryable error into another, and the server's own message is kept either way.
 
 *Revised 2026-10-09: `context budget` and `compacted context` added, as mlx-vlm words its
-overflows (wire-protocol 5); its message is its `detail` (D44).*
+overflows (wire-protocol 5); its message is its `detail` (D44). Revised 2026-11-26: `prompt is
+too long` added, as the Messages API words a 400 for a prompt over the context window (D50).*
 
 ### D31. The answer text is what the server sent
 
@@ -562,8 +566,9 @@ setting a name again replaces the earlier value.
 `build()` validates them, `Config` otherwise: a name must be a header name; a value must be ASCII
 with no control character but a tab, so it cannot end the header early and start another; and the
 headers svir writes itself, or that frame the request, are refused: `authorization`,
-`content-type`, `content-length`, `accept`, `host`, `transfer-encoding`, `connection`. The API
-key stays with `api_key` (D17), where it is checked and withheld.
+`content-type`, `content-length`, `accept`, `host`, `transfer-encoding`, `connection`, and
+`anthropic-version` (D50). The API key stays with `api_key` (D17), where it is checked and
+withheld.
 
 Any value may be a credential, so every one is treated as one: withheld from the `Debug` output
 of the client and of an `HttpRequest`, and sent as a sensitive header by the built-in backend.
@@ -742,8 +747,8 @@ A level is sent as the request sets it, never moved to a nearby one the server i
 (P11). Which levels a model takes is not known before it answers, and a level the caller did not
 ask for is a setting it did not choose. A server that does not take one rejects the request: vLLM
 with Qwen3.8 rejected `high` with 400 (wire-protocol 2.5). The lean retry then leaves the effort
-out (D11), unless it is turned off (D48). An API that takes a thinking budget maps all seven in
-its table (O6).
+out (D11), unless it is turned off (D48). The Messages API maps six of them to its own levels and
+has none for `Minimal` (D52).
 
 ### D47. Calls the output limit cut off are kept apart, and never run
 
@@ -810,6 +815,117 @@ with one large image was refused though it fit.
 Not chosen: a fixed cost per image, which counts a thumbnail as much as a photo, and an estimator
 the caller supplies, which is a new public contract for what a caller with a tokenizer can do
 already, by leaving `context_tokens` unset and checking on its own.
+
+### D50. Anthropic Messages is the second wire API
+
+Resolves O6 for the Anthropic Messages API; the OpenAI Responses API is still open. Models
+served through the Messages API were reachable only through a compatibility endpoint, which
+loses what the API has of its own: signed thinking, effort, typed stop reasons and errors.
+
+- `Client::anthropic()` builds a client for `https://api.anthropic.com`, and `.base_url(url)`
+  points it elsewhere, such as a local server with a Messages endpoint (D13). The URL follows
+  P4, with or without `/v1`.
+- The codec is `svir::anthropic::messages::{Encoder, Decoder}`, behind the same `Request`,
+  `Event`, and `Completion`. Its wire types stay private to it.
+- It posts to `/v1/messages` with `stream: true` and `anthropic-version: 2026-10-21`, the
+  current version, which svir writes and a caller cannot replace (D38).
+- The API key goes as `Authorization: Bearer`, as for Chat Completions (D17) and as the current
+  Anthropic SDKs send it. A gateway that reads `x-api-key` gets it with
+  `.header("x-api-key", key)`, withheld like any header of the caller's (D38).
+- There is no lean retry (D11): the encoder writes only what the request set, so a 400 is the
+  server's answer to the request itself.
+- Model listing is `GET /v1/models?limit=1000`, following `has_more` with `after_id`; a model's
+  `display_name` is its name.
+
+The layout of a request and the reading of the stream are P18 and P19; what the API does on the
+wire is in [wire-protocol-anthropic.md](wire-protocol-anthropic.md).
+
+### D51. A completion keeps its parts in the order they arrived
+
+The Messages API answers in content blocks, and wants them back unchanged: within the latest
+assistant message, the thinking blocks must be the ones the model produced, in their order, and
+the newer models reject a conversation whose earlier blocks were edited. A completion held its
+text joined, its reasoning, and its calls apart, and `Message::from(Completion)` rebuilt them as
+reasoning, text, calls: a reordering that changes the history.
+
+- `Completion::parts` holds the answer's text, reasoning, and tool calls as `Part`s in wire
+  order, each text block its own part. `Message::from(Completion)` takes them as they are.
+- `text`, `reasoning`, and `calls` stay, as views of the same answer: what a caller reads.
+- Empty `parts` means reasoning, then text, then calls: the order Chat Completions always has.
+  The Chat decoder leaves it empty, so its completions carry nothing twice, and one stored by
+  0.1 goes back as it did.
+- Calls the output limit cut off are not in it, as they are not in `calls` (D47).
+- It is left out of the serde form when empty (D22).
+
+### D52. Effort on the Messages API
+
+The Messages API dropped thinking budgets on its current models for adaptive thinking, whose
+depth `output_config.effort` sets: `low`, `medium`, `high`, `xhigh`, or `max`. Opus 4.7 and 4.8
+do not think unless adaptive thinking is asked for, and the Claude 5 models return thinking
+blocks with empty text unless a summary is asked for.
+
+- A level from `Low` to `Max` sends `thinking: {type: "adaptive", display: "summarized"}` and
+  `output_config: {effort: level}`. Reasoning then runs where it is off by default, and is shown
+  live where the default hides it (P5). The display changes what is returned, not what is
+  billed.
+- `Off` sends `thinking: {type: "disabled"}`, as set; a model that cannot turn thinking off
+  answers with a 400 (D46).
+- `Minimal` has no level here: `Unsupported`, before anything is sent.
+- No effort sends neither field, and the model's default applies.
+
+### D53. The Messages API needs `max_tokens`
+
+The API requires `max_tokens`, and `Request` leaves it optional because Chat Completions does. A
+request without it is `Unsupported` before anything is sent, rather than given a value nobody
+chose (P11): any constant is too high for some model and too low for some answer.
+
+### D54. Signed and redacted reasoning
+
+A thinking block carries a `signature`, and a `redacted_thinking` block carries encrypted `data`
+and no readable text. Both go back to the API unchanged, and neither means anything to the
+caller.
+
+- `Reasoning::signature` is what the server needs back with the reasoning, unchanged. It is left
+  out of the serde form when absent, so reasoning stored by 0.1 reads as it was.
+- `ReasoningSource::Thinking` is a thinking block: its text, empty when the display omits it, and
+  its signature. `ReasoningSource::RedactedThinking` is a redacted block: empty text, and its
+  data in `signature`. A redacted block emits no live event, as there is nothing to show; it is
+  kept in the completion.
+- Each block is its own `Reasoning` in the completion, not joined per source as the Chat
+  carriers are, since each goes back as the block it was.
+- Reasoning from the Messages API always goes back to it, whatever `send_reasoning` says: the
+  API asks for it, and drops without billing what the model cannot read. Reasoning from any
+  other source never goes to the Messages API, which takes no unsigned thinking, and Messages
+  reasoning never goes to Chat Completions, which has no key for it.
+
+### D55. Unknown Messages events are skipped
+
+The Messages API's versioning policy adds event types, and asks clients to skip those they do
+not know. Failing on them in strict mode (D3) would break a strict client the day one is added.
+
+- An event type svir does not know is skipped in both modes, as `ping` is.
+- A content block type or a delta type it does not know may carry the answer: `Unsupported` in
+  strict mode, skipped in lenient mode (P8).
+
+### D56. A wire API is a feature only when it brings dependencies
+
+Chat Completions and Messages are always in the crate. A wire API that needs nothing but what
+svir has already, the body, SSE framing, and `serde_json`, costs a few seconds of compiling and
+little else, and a binary that uses only a codec loses the other at link time. Behind a feature,
+it would cost more than it saves:
+
+- `Client` is one type so that the wire API can be chosen from configuration at run time (D13);
+  a feature moves that choice back to the build.
+- The types an adapter adds to are shared and serializable (D22): reasoning from one API is
+  stored, read, and sent on by builds that may lack it. Only the codec and the constructor could
+  be gated, a boundary that explains nothing.
+- Every feature adds Clippy and test rows to CI, and a `cfg` to every `match` over the wire API.
+- Putting an API that is always there behind a feature later breaks every build that turns the
+  default features off.
+
+A feature is for an adapter or a part that brings dependencies, such as request signing or a
+cloud provider's sign-in, the way the TLS features choose a crypto provider (D34). It comes with
+the adapter, from its first release.
 
 ### P1. Edition 2024; MSRV 1.85
 
@@ -924,11 +1040,60 @@ in bytes, which never underestimates text, with each image counted as no more th
 
 ### P17. Accepted as D22
 
+### P18. Messages layout
+
+- `model`, `max_tokens` (D53), `stream: true`, and `system` as a top-level string.
+- Every part is a block of its own, in the order given: text as a `text` block, a text file as
+  a `text` block wrapped as in P12, an image as an `image` block with a base64 source.
+- A model message's parts go back in order: text as `text`, Messages reasoning as `thinking` or
+  `redacted_thinking` (D54), a tool call as `tool_use` with the arguments as its `input`. The
+  arguments must be a JSON object, or empty, which is `{}`; anything else is `Unsupported`.
+- A tool message becomes a user message of `tool_result` blocks, the caller's string as
+  `content`, and `is_error: true` for a failed result (D37), which the API has a field for.
+- Messages of one wire role in a row are joined into one, as a tool message and the user message
+  after it are.
+- Tools are `{name, description, input_schema}`. A tool choice is `{type: "none"}`,
+  `{type: "any"}` for a required call, or `{type: "tool", name}`; `auto` is not sent (D40).
+- A schema response format is `output_config.format: {type: "json_schema", schema}`; the API
+  always holds to it, so the schema's name and `strict` have no field. A JSON format without a
+  schema has no layout here: `Unsupported`.
+- `temperature` is sent as set. The API version svir speaks rejects it on hosted models;
+  compatible servers take it.
+- Usage is always streamed: `include_usage` writes nothing. Admission is as for Chat (P14, D49).
+
+### P19. Reading a Messages stream
+
+- `message_start` opens the answer, `content_block_start`, `content_block_delta`, and
+  `content_block_stop` carry its blocks, `message_delta` its stop reason and usage, and
+  `message_stop` completes it. `ping` is skipped (D55); `error` fails the stream as D29 and D30
+  say.
+- Blocks: `text` (`text_delta`, split for `<think>` as Chat content is, D23), `thinking`
+  (`thinking_delta`, `signature_delta`), `redacted_thinking` (whole, D54), and `tool_use`
+  (`input_json_delta`; its arguments are the pieces joined, or its starting `input` when none
+  came).
+- Stop reasons: `end_turn` and `stop_sequence` are `Stop`, `max_tokens` and
+  `model_context_window_exceeded` are `Length`, `tool_use` is `ToolCalls`, and `refusal` is
+  `Refusal`, the text before it kept (D42). Any other, `pause_turn` included, is `Unsupported`:
+  svir sends no server tools.
+- Calls with a `Stop` finish are an answer of calls, `ToolCalls` (D45). A call's index in
+  `ToolCallDelta` is its place among the calls, not among the blocks.
+- Usage: input is `input_tokens` plus the cache's `cache_creation_input_tokens` and
+  `cache_read_input_tokens`, the API's own total of the prompt; output is the last
+  `output_tokens`, which `message_delta` reports as a running total; reasoning is
+  `output_tokens_details.thinking_tokens` when reported. No total is reported.
+- Fields added to the objects of known events are read past in both modes, under the versioning
+  policy of D55. What makes the answer ambiguous is `Protocol` in both modes (P8): a delta for a
+  block that is not open, a delta of the wrong type for its block, a block index out of order, a
+  block that starts before the one before it stopped. A second `message_start`, or blocks before
+  the first, are `Protocol` in strict mode and read past in lenient mode, as metadata is.
+- `message_stop` before a stop reason, and the end of the input before `message_stop`, are
+  `TruncatedStream`.
+
 ## Open
 
-- **O6. Other wire APIs.** The client shape is settled (D13). Open: which APIs (OpenAI Responses,
-  Anthropic Messages, ...), in what order, and how each maps the neutral types, for example
-  `Effort` to a thinking budget.
+- **O6. Other wire APIs.** The client shape is settled (D13), and the Anthropic Messages API is
+  the second (D50-D55). Open: the OpenAI Responses API and others, and how each maps the neutral
+  types.
 - **O7. `Retry-After` as an HTTP date.** Only numeric seconds are handled today.
 - **O9. An optional loop helper.** See D6.
 - **O10. Model listing.** Is the non-chat model filter part of svir or of the application?

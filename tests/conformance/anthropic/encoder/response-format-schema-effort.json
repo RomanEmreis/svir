@@ -1,0 +1,67 @@
+{
+  "description": "Effort and a format share output_config.",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "reasoning_effort": "high",
+    "response_format": {
+      "schema": {
+        "name": "place",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "city": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "hi"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "max_tokens": 16,
+      "stream": true,
+      "thinking": {
+        "type": "adaptive",
+        "display": "summarized"
+      },
+      "output_config": {
+        "effort": "high",
+        "format": {
+          "type": "json_schema",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

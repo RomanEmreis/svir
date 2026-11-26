@@ -1,27 +1,20 @@
 //! A request, encoded as a Chat Completions body.
 
-use bytes::Bytes;
 use serde::Serialize;
 use serde_json::Value;
 
 use super::wire::FUNCTION_TYPE;
-use crate::body::{
-    Body, Encoding, Segment, attachment,
-    escape::{escape_into, escaped_len},
-    not_utf8,
-};
 use crate::{
-    Effort, Error, ErrorKind, Image, Message, Part, ReasoningSource, Request, ResponseFormat, Role,
-    Source, TextFile, ToolCall, ToolChoice,
+    Effort, Error, Image, Message, Part, ReasoningSource, Request, ResponseFormat, Role, TextFile,
+    ToolCall,
+    body::Body,
+    encode::{
+        self, Choice, Measure, Segments, Settings, in_memory, media_type, not_for_model,
+        not_for_tool, not_for_user,
+    },
 };
-
-/// Attachments are read this many bytes at a time. A multiple of 3, so every base64 block but the
-/// last encodes without padding and the blocks join into one valid string.
-const BLOCK: usize = 48 * 1024;
-
-/// The most one image counts for in admission by default: what the common vision encoders make
-/// of one image at their default settings, at most. Hosted APIs charge far less.
-const IMAGE_TOKENS: u64 = 16_384;
+#[cfg(feature = "client")]
+use crate::{Source, body::Encoding};
 
 /// Encodes a [`Request`] as a Chat Completions body.
 ///
@@ -48,9 +41,7 @@ const IMAGE_TOKENS: u64 = 16_384;
 pub struct Encoder {
     lean: bool,
     include_usage: bool,
-    block: usize,
-    context: Option<u64>,
-    image_tokens: u64,
+    settings: Settings,
 }
 
 impl Default for Encoder {
@@ -65,9 +56,7 @@ impl Encoder {
         Self {
             lean: false,
             include_usage: false,
-            block: BLOCK,
-            context: None,
-            image_tokens: IMAGE_TOKENS,
+            settings: Settings::default(),
         }
     }
 
@@ -89,17 +78,17 @@ impl Encoder {
     /// Sets how many bytes of an attachment are read at a time, rounded down to a multiple of 3
     /// and at least 3. The default, 48 KiB, suits everything but tests.
     pub fn block_bytes(mut self, bytes: usize) -> Self {
-        self.block = (bytes / 3).max(1) * 3;
+        self.settings.block_bytes(bytes);
         self
     }
 
     /// Sets the model's context size for admission: a request whose estimate plus `max_tokens`
-    /// does not fit, or whose `max_tokens` is 0, is [`ErrorKind::ContextOverflow`] before
-    /// anything is sent. The estimate is the body length in bytes, which never underestimates
-    /// text, with each image's base64 counted as no more than
-    /// [`image_tokens`](Self::image_tokens).
+    /// does not fit, or whose `max_tokens` is 0, is
+    /// [`ErrorKind::ContextOverflow`](crate::ErrorKind::ContextOverflow) before anything is sent.
+    /// The estimate is the body length in bytes, which never underestimates text, with each
+    /// image's base64 counted as no more than [`image_tokens`](Self::image_tokens).
     pub fn context_tokens(mut self, tokens: u64) -> Self {
-        self.context = Some(tokens);
+        self.settings.context_tokens(tokens);
         self
     }
 
@@ -108,25 +97,17 @@ impl Encoder {
     /// at their default settings; a model that charges less, as hosted APIs do, can be given its
     /// own figure. Without [`context_tokens`](Self::context_tokens) it has no effect.
     pub fn image_tokens(mut self, tokens: u64) -> Self {
-        self.image_tokens = tokens;
+        self.settings.image_tokens(tokens);
         self
     }
 
     /// Encodes `request` without I/O. Every attachment must be in memory; one held as a file
-    /// path is [`ErrorKind::Attachment`], and needs `encode_files`.
+    /// path is [`ErrorKind::Attachment`](crate::ErrorKind::Attachment), and needs
+    /// `encode_files`.
     pub fn encode(&self, request: &Request) -> Result<Body, Error> {
         let choice = tool_choice(request)?;
 
-        self.build(
-            request,
-            choice,
-            &mut |source, encoding, declared| match source {
-                Source::Bytes(data) => measure_bytes(data, encoding, declared),
-                _ => Err(attachment(
-                    "a file attachment needs Encoder::encode_files (feature `client`)",
-                )),
-            },
-        )
+        self.build(request, choice, &mut in_memory)
     }
 
     /// Encodes `request`, first measuring the attachments held as file paths: an image's size,
@@ -137,23 +118,13 @@ impl Encoder {
     pub async fn encode_files(&self, request: &Request) -> Result<Body, Error> {
         // A tool choice that cannot be met fails before any file is read.
         let choice = tool_choice(request)?;
-
-        let mut measured = std::collections::VecDeque::new();
-        for (source, encoding, declared) in attachments(request) {
-            if let Source::Path(path) = source {
-                measured.push_back(files::measure(path, encoding, declared, self.block).await?);
-            }
-        }
+        let mut measured =
+            crate::encode::measure_files(attachments(request), self.settings.block()).await?;
 
         self.build(
             request,
             choice,
-            &mut |source, encoding, declared| match source {
-                Source::Bytes(data) => measure_bytes(data, encoding, declared),
-                _ => measured
-                    .pop_front()
-                    .ok_or_else(|| attachment("an attachment was not measured")),
-            },
+            &mut crate::encode::measured_before(&mut measured),
         )
     }
 
@@ -220,7 +191,7 @@ impl Encoder {
                 Role::Tool => {
                     for part in &message.parts {
                         let Part::ToolResult(result) = part else {
-                            return Err(unsupported("a tool message carries only tool results"));
+                            return Err(not_for_tool());
                         };
                         separate(&mut out);
                         out.raw(br#"{"role":"tool","tool_call_id":"#);
@@ -238,75 +209,8 @@ impl Encoder {
         }
         out.raw(b"]}");
 
-        let (segments, length, images) = out.finish();
-        self.admit(request, length, &images)?;
-
-        Ok(Body::new(segments, length, self.block))
+        self.settings.body(out, request.max_tokens)
     }
-
-    /// Checks that the request fits in the context size, when there is one. `images` are the
-    /// base64 lengths of the images in the body.
-    fn admit(&self, request: &Request, length: u64, images: &[u64]) -> Result<(), Error> {
-        let Some(context) = self.context else {
-            return Ok(());
-        };
-
-        let uncounted: u64 = images
-            .iter()
-            .map(|encoded| encoded.saturating_sub(self.image_tokens))
-            .sum();
-        let estimate = length - uncounted;
-        let reserved = request.max_tokens.unwrap_or(0);
-
-        if request.max_tokens == Some(0) || estimate.saturating_add(reserved) > context {
-            return Err(Error::new(ErrorKind::ContextOverflow)
-                .with_detail("the request and max_tokens do not fit in the context size"));
-        }
-        Ok(())
-    }
-}
-
-/// Measures one attachment: its size, and what it encodes to. The third argument is the escaped
-/// length a text file declares.
-type Measure<'a> = dyn FnMut(&Source, Encoding, Option<u64>) -> Result<Measured, Error> + 'a;
-
-#[derive(Debug, Clone, Copy)]
-struct Measured {
-    size: u64,
-    encoded: u64,
-}
-
-fn measure_bytes(
-    data: &Bytes,
-    encoding: Encoding,
-    declared: Option<u64>,
-) -> Result<Measured, Error> {
-    let size = data.len() as u64;
-    let encoded = match encoding {
-        Encoding::Base64 => base64_len(size),
-        Encoding::JsonString => {
-            if std::str::from_utf8(data).is_err() {
-                return Err(not_utf8());
-            }
-            escaped_len(data)
-        }
-    };
-
-    // Measured anyway, since it is in memory; a declared length must agree.
-    if declared.is_some_and(|declared| declared != encoded) {
-        return Err(not_declared());
-    }
-
-    Ok(Measured { size, encoded })
-}
-
-fn not_declared() -> Error {
-    attachment("a text file is not the escaped length it declares")
-}
-
-/// How long the base64 of `size` bytes is, padding included.
-fn base64_len(size: u64) -> u64 {
-    size.div_ceil(3) * 4
 }
 
 /// The attachments of a request, in the order the body uses them, with the escaped length a
@@ -341,11 +245,7 @@ fn user(message: &Message, out: &mut Segments, measure: &mut Measure<'_>) -> Res
             Part::Text(text) => texts.push(Text::Plain(text)),
             Part::File(file) => texts.push(Text::File(file)),
             Part::Image(image) => images.push(image),
-            _ => {
-                return Err(unsupported(
-                    "a user message carries text, files, and images",
-                ));
-            }
+            _ => return Err(not_for_user()),
         }
     }
 
@@ -364,10 +264,7 @@ fn user(message: &Message, out: &mut Segments, measure: &mut Measure<'_>) -> Res
             if i > 0 || !texts.is_empty() {
                 out.raw(b",");
             }
-            let media_type = image
-                .media_type
-                .as_deref()
-                .ok_or_else(|| attachment("an image has no media type"))?;
+            let media_type = media_type(image)?;
             out.raw(br#"{"type":"image_url","image_url":{"url":"data:"#);
             out.escaped(media_type.as_bytes());
             out.raw(b";base64,");
@@ -401,17 +298,7 @@ fn content_string(
 
         match text {
             Text::Plain(text) => out.escaped(text.as_bytes()),
-            Text::File(file) => {
-                let name = file.name.replace('"', "&quot;");
-                out.escaped(format!("<file name=\"{name}\">\n").as_bytes());
-                out.data(
-                    &file.source,
-                    Encoding::JsonString,
-                    file.escaped_len,
-                    measure,
-                )?;
-                out.escaped(b"\n</file>");
-            }
+            Text::File(file) => out.file(file, measure)?,
         }
     }
 
@@ -442,11 +329,7 @@ fn assistant(message: &Message, send_reasoning: bool, out: &mut Segments) -> Res
                 ReasoningSource::Reasoning => reasoning.push_str(&part.text),
                 _ => {}
             },
-            _ => {
-                return Err(unsupported(
-                    "a model message carries text, reasoning, and tool calls",
-                ));
-            }
+            _ => return Err(not_for_model()),
         }
     }
 
@@ -474,27 +357,16 @@ fn assistant(message: &Message, send_reasoning: bool, out: &mut Segments) -> Res
     Ok(())
 }
 
-/// Whether the model may or must call a tool, checked against the tools the request offers.
+/// The tool choice as Chat Completions writes it.
 fn tool_choice(request: &Request) -> Result<Option<WireToolChoice<'_>>, Error> {
-    let offers = |name: &str| request.tools.iter().any(|tool| tool.name == name);
-
-    match &request.tool_choice {
-        // The server's default; and with no tools there is nothing to forbid.
-        ToolChoice::Auto => Ok(None),
-        ToolChoice::None if request.tools.is_empty() => Ok(None),
-        ToolChoice::None => Ok(Some(WireToolChoice::Mode("none"))),
-        ToolChoice::Required if request.tools.is_empty() => Err(unsupported(
-            "a tool call is required, and the request offers no tools",
-        )),
-        ToolChoice::Required => Ok(Some(WireToolChoice::Mode("required"))),
-        ToolChoice::Tool(name) if !offers(name) => Err(unsupported(
-            "a call is required of a tool the request does not offer",
-        )),
-        ToolChoice::Tool(name) => Ok(Some(WireToolChoice::Function {
+    Ok(encode::tool_choice(request)?.map(|choice| match choice {
+        Choice::None => WireToolChoice::Mode("none"),
+        Choice::Required => WireToolChoice::Mode("required"),
+        Choice::Tool(name) => WireToolChoice::Function {
             kind: FUNCTION_TYPE,
             function: WireName { name },
-        })),
-    }
+        },
+    }))
 }
 
 fn response_format(format: &ResponseFormat) -> Option<WireFormat<'_>> {
@@ -520,101 +392,6 @@ fn effort(effort: Effort) -> &'static str {
         Effort::High => "high",
         Effort::XHigh => "xhigh",
         Effort::Max => "max",
-    }
-}
-
-fn unsupported(detail: &'static str) -> Error {
-    Error::new(ErrorKind::Unsupported).with_detail(detail)
-}
-
-/// The body as it is put together: literal bytes, run together until an attachment interrupts.
-#[derive(Default)]
-struct Segments {
-    parts: Vec<Segment>,
-    pending: Vec<u8>,
-    length: u64,
-    /// The base64 length of each image, for admission.
-    images: Vec<u64>,
-}
-
-impl Segments {
-    /// Bytes that are JSON already.
-    fn raw(&mut self, bytes: &[u8]) {
-        self.pending.extend_from_slice(bytes);
-    }
-
-    /// A value written as JSON.
-    fn json<T: Serialize>(&mut self, value: &T) -> Result<(), Error> {
-        serde_json::to_writer(&mut self.pending, value).map_err(|source| {
-            Error::new(ErrorKind::Unsupported)
-                .with_detail("the request cannot be written as JSON")
-                .with_source(source)
-        })
-    }
-
-    /// An object written as JSON and left open for more members: its closing brace is not
-    /// written.
-    fn open_object<T: Serialize>(&mut self, value: &T) -> Result<(), Error> {
-        self.json(value)?;
-        self.pending.pop();
-
-        Ok(())
-    }
-
-    /// Text, escaped for the JSON string being written.
-    fn escaped(&mut self, text: &[u8]) {
-        escape_into(text, &mut self.pending);
-    }
-
-    /// Text as a whole JSON string.
-    fn string(&mut self, text: &str) {
-        self.raw(b"\"");
-        self.escaped(text.as_bytes());
-        self.raw(b"\"");
-    }
-
-    /// An attachment, encoded when the body is read.
-    fn data(
-        &mut self,
-        source: &Source,
-        encoding: Encoding,
-        declared: Option<u64>,
-        measure: &mut Measure<'_>,
-    ) -> Result<u64, Error> {
-        let measured = measure(source, encoding, declared)?;
-
-        self.flush();
-        self.length += measured.encoded;
-        self.parts.push(Segment::Data {
-            source: source.clone(),
-            size: measured.size,
-            encoded: measured.encoded,
-            encoding,
-        });
-
-        Ok(measured.encoded)
-    }
-
-    /// An image, as base64 encoded when the body is read.
-    fn image(&mut self, source: &Source, measure: &mut Measure<'_>) -> Result<(), Error> {
-        let encoded = self.data(source, Encoding::Base64, None, measure)?;
-        self.images.push(encoded);
-        Ok(())
-    }
-
-    fn flush(&mut self) {
-        if !self.pending.is_empty() {
-            self.length += self.pending.len() as u64;
-            self.parts.push(Segment::Bytes(Bytes::from(std::mem::take(
-                &mut self.pending,
-            ))));
-        }
-    }
-
-    /// The pieces, the length, and the base64 length of each image.
-    fn finish(mut self) -> (Vec<Segment>, u64, Vec<u64>) {
-        self.flush();
-        (self.parts, self.length, self.images)
     }
 }
 
@@ -717,80 +494,12 @@ impl<'a> From<&'a ToolCall> for WireCall<'a> {
     }
 }
 
-#[cfg(feature = "client")]
-mod files {
-    use std::path::Path;
-
-    use tokio::{fs::File, io::AsyncReadExt};
-
-    use super::{Encoding, Measured, base64_len, not_declared};
-    use crate::{
-        Error,
-        body::{
-            escape::{Utf8Check, escaped_len},
-            not_utf8, unreadable,
-        },
-    };
-
-    /// Measures a file: an image by its size, a text file by reading it once, or by its size when
-    /// it declares its escaped length. The body stream checks a declared length as it reads.
-    pub(super) async fn measure(
-        path: &Path,
-        encoding: Encoding,
-        declared: Option<u64>,
-        block: usize,
-    ) -> Result<Measured, Error> {
-        match (encoding, declared) {
-            (Encoding::Base64, _) => {
-                let size = size_of(path).await?;
-                Ok(Measured {
-                    size,
-                    encoded: base64_len(size),
-                })
-            }
-            (Encoding::JsonString, Some(encoded)) => {
-                // Every byte escapes to 1, 2, or 6 bytes; a length outside that is wrong already.
-                let size = size_of(path).await?;
-                if encoded < size || encoded > size.saturating_mul(6) {
-                    return Err(not_declared());
-                }
-                Ok(Measured { size, encoded })
-            }
-            (Encoding::JsonString, None) => {
-                let mut file = File::open(path).await.map_err(unreadable)?;
-                let mut buffer = vec![0; block.max(8 * 1024)];
-                let mut check = Utf8Check::default();
-                let (mut size, mut encoded) = (0u64, 0u64);
-                loop {
-                    let read = file.read(&mut buffer).await.map_err(unreadable)?;
-                    if read == 0 {
-                        break;
-                    }
-                    if !check.push(&buffer[..read]) {
-                        return Err(not_utf8());
-                    }
-                    size += read as u64;
-                    encoded += escaped_len(&buffer[..read]);
-                }
-                if !check.finish() {
-                    return Err(not_utf8());
-                }
-                Ok(Measured { size, encoded })
-            }
-        }
-    }
-
-    async fn size_of(path: &Path) -> Result<u64, Error> {
-        Ok(tokio::fs::metadata(path).await.map_err(unreadable)?.len())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::{Completion, FinishReason, Reasoning, Tool};
+    use crate::{Completion, ErrorKind, FinishReason, Reasoning, Tool};
 
     fn body(encoder: &Encoder, request: &Request) -> Value {
         let body = encoder.encode(request).unwrap();
@@ -903,7 +612,7 @@ mod tests {
             .message(Message::user("").with(photo));
 
         let length = Encoder::new().encode(&request).unwrap().len();
-        let estimate = length - base64_len(30_000) + 16_384;
+        let estimate = length - crate::encode::base64_len(30_000) + 16_384;
         let admits = |context: u64| Encoder::new().context_tokens(context).encode(&request);
 
         assert!(admits(estimate + 16).is_ok());

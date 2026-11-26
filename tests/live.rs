@@ -4,8 +4,10 @@
 //! SVIR_MODEL=<model> cargo test --test live -- --ignored --test-threads=1
 //! ```
 //!
-//! `SVIR_URL` is the server, `http://127.0.0.1:1234` unless set. The model has to call tools and
-//! see images. One test at a time: a local server answers one request at a time anyway.
+//! `SVIR_URL` is the server, `http://127.0.0.1:1234` unless set. `SVIR_API=anthropic` speaks the
+//! Messages API to it instead of Chat Completions, and `SVIR_API_KEY`, when set, is the API key.
+//! The model has to call tools and see images. One test at a time: a local server answers one
+//! request at a time anyway.
 //!
 //! A model's words are not deterministic, so each test asks for something only a working round
 //! trip can produce, and checks for that.
@@ -22,10 +24,23 @@ use svir::prelude::*;
 
 const IMAGE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/data/red-circle.png");
 
+/// Whether the run speaks the Messages API.
+fn messages() -> bool {
+    std::env::var("SVIR_API").is_ok_and(|api| api == "anthropic")
+}
+
 fn builder() -> svir::ClientBuilder {
     let url = std::env::var("SVIR_URL").unwrap_or_else(|_| "http://127.0.0.1:1234".to_owned());
+    let builder = if messages() {
+        Client::anthropic().base_url(url)
+    } else {
+        Client::openai(url)
+    };
 
-    Client::openai(url)
+    match std::env::var("SVIR_API_KEY") {
+        Ok(_) => builder.api_key_env("SVIR_API_KEY"),
+        Err(_) => builder,
+    }
 }
 
 fn client() -> Client {
@@ -34,8 +49,14 @@ fn client() -> Client {
 
 fn request() -> Request {
     let model = std::env::var("SVIR_MODEL").expect("set SVIR_MODEL to a model the server has");
+    let request = Request::new(model).reasoning(Effort::Low);
 
-    Request::new(model).reasoning(Effort::Low)
+    // The Messages API needs max_tokens.
+    if messages() {
+        request.max_tokens(4096)
+    } else {
+        request
+    }
 }
 
 fn said(answer: &Completion, word: &str) -> bool {

@@ -1,0 +1,51 @@
+{
+  "description": "Any other 400 is the server's answer to the request: Unsupported with its message, and no lean retry (D50).",
+  "config": {
+    "base_url": "{server}"
+  },
+  "server": [
+    {
+      "status": 400,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"type\": \"error\", \"error\": {\"type\": \"invalid_request_error\", \"message\": \"temperature: Extra inputs are not permitted\"}, \"request_id\": \"req_1\"}"
+    }
+  ],
+  "calls": [
+    {
+      "request": {
+        "model": "m",
+        "max_tokens": 16,
+        "reasoning_effort": "low",
+        "messages": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "text": "hi"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "error": "unsupported",
+        "retryable": false,
+        "status": 400,
+        "message": "temperature: Extra inputs are not permitted"
+      }
+    }
+  ],
+  "expect_requests": [
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "body_includes": {
+        "output_config": {
+          "effort": "low"
+        }
+      }
+    }
+  ]
+}

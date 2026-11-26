@@ -1,0 +1,30 @@
+{
+  "description": "Reasoning from Messages thinking blocks has no Chat Completions key, so it never goes there, even when reasoning is sent back (D54).",
+  "request": {
+    "model": "m",
+    "messages": [
+      {"role": "user", "parts": [{"text": "hi"}]},
+      {
+        "role": "assistant",
+        "parts": [
+          {"reasoning": {"source": "thinking", "text": "plan", "signature": "s1"}},
+          {"reasoning": {"source": "redacted_thinking", "text": "", "signature": "enc"}},
+          {"text": "42"}
+        ]
+      },
+      {"role": "user", "parts": [{"text": "and?"}]}
+    ]
+  },
+  "options": {"send_reasoning": true},
+  "expect": {
+    "body": {
+      "model": "m",
+      "stream": true,
+      "messages": [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "42"},
+        {"role": "user", "content": "and?"}
+      ]
+    }
+  }
+}

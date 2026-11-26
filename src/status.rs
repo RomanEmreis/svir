@@ -4,11 +4,10 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use super::{
-    overflow,
+use crate::{
+    Error, ErrorKind, overflow,
     wire::{CODE, ERROR, MESSAGE},
 };
-use crate::{Error, ErrorKind};
 
 /// A retry delay the server asks for is honored up to this.
 const RETRY_AFTER_LIMIT: Duration = Duration::from_secs(30);
@@ -65,7 +64,8 @@ pub(crate) fn classify(status: u16, retry_after: Option<&str>, body: &[u8]) -> E
         401 | 403 => ErrorKind::Authentication,
         429 => ErrorKind::RateLimited,
         408 | 504 => ErrorKind::Timeout,
-        500 | 502 | 503 => ErrorKind::Transport,
+        // 529 is the Messages API's overload.
+        500 | 502 | 503 | 529 => ErrorKind::Transport,
         400 | 413 | 422 if filtered() => ErrorKind::ContentFilter,
         400 | 413 | 422 if overflowed() => ErrorKind::ContextOverflow,
         _ => ErrorKind::Unsupported,
@@ -120,7 +120,7 @@ mod tests {
         assert_eq!(kind(429, ""), ErrorKind::RateLimited);
         assert_eq!(kind(408, ""), ErrorKind::Timeout);
         assert_eq!(kind(504, ""), ErrorKind::Timeout);
-        for status in [500, 502, 503] {
+        for status in [500, 502, 503, 529] {
             assert_eq!(kind(status, ""), ErrorKind::Transport);
         }
         for status in [307, 404, 400, 422] {

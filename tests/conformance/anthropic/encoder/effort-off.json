@@ -1,0 +1,39 @@
+{
+  "description": "Off turns thinking off, as set (D52).",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "reasoning_effort": "none",
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "hi"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "max_tokens": 16,
+      "stream": true,
+      "thinking": {
+        "type": "disabled"
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

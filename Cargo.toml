@@ -101,3 +101,5 @@ missing_docs = "warn"
 
 [lints.clippy]
 unwrap_used = "warn"
+# A module with submodules is `name.rs` next to `name/`, never `name/mod.rs`.
+mod_module_files = "warn"

@@ -1,0 +1,14 @@
+{
+  "description": "An error that says the prompt is too long is a context overflow (D30).",
+  "chunks": [
+    "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_01\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-5-5\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":10,\"output_tokens\":1}}}\n\n",
+    "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"prompt is too long: 210000 tokens > 200000 maximum\"}}\n\n"
+  ],
+  "expect": {
+    "strict": {
+      "error": "context_overflow",
+      "message": "prompt is too long: 210000 tokens > 200000 maximum"
+    },
+    "lenient": "same"
+  }
+}

@@ -1,11 +1,15 @@
-//! Telling a context overflow from any other failure the server reports.
+//! Telling a context overflow from any other failure the server reports, and the error for a
+//! failure reported inside an open stream.
 //!
-//! Servers agree on no single sign of it. Some set an error code, some an error type, and some
-//! only say it in words, so all three are read (D30).
+//! Servers agree on no single sign of an overflow. Some set an error code, some an error type,
+//! and some only say it in words, so all three are read (D30).
 
 use serde_json::Value;
 
-use super::wire::{CODE, MESSAGE, TYPE};
+use crate::{
+    Error, ErrorKind,
+    wire::{CODE, ERROR, MESSAGE, TYPE},
+};
 
 /// Values of `error.code` or `error.type` that mean the request did not fit.
 const NAMES: [&str; 3] = [
@@ -15,13 +19,15 @@ const NAMES: [&str; 3] = [
 ];
 
 /// What a server that names nothing says about it, in lowercase. Every server observed speaks of
-/// the context's length, size, window, or budget, or of compacted context.
-const PHRASES: [&str; 5] = [
+/// the context's length, size, window, or budget, or of compacted context, or says the prompt is
+/// too long, as the Messages API does.
+const PHRASES: [&str; 6] = [
     "context length",
     "context size",
     "context window",
     "context budget",
     "compacted context",
+    "prompt is too long",
 ];
 
 /// Whether an error the server reported is a context overflow. `error` is its error object, or
@@ -44,6 +50,41 @@ pub(crate) fn says_overflow(message: &str) -> bool {
     let message = message.to_ascii_lowercase();
 
     PHRASES.iter().any(|phrase| message.contains(phrase))
+}
+
+/// An error the server reported inside an open stream: a failure of its own (D29), unless it
+/// says that the request did not fit in the context (D30).
+pub(crate) fn server_error(error: &Value) -> Error {
+    let message = error
+        .get(MESSAGE)
+        .and_then(Value::as_str)
+        .or_else(|| error.as_str());
+    let reported = if is_overflow(error) {
+        Error::new(ErrorKind::ContextOverflow).with_detail("reported inside the stream")
+    } else {
+        Error::new(ErrorKind::Server)
+    };
+
+    match message.filter(|message| !message.is_empty()) {
+        Some(message) => reported.with_server_message(message),
+        None => reported,
+    }
+}
+
+/// An `error` event. Whatever its data, the stream has failed: the data is the server's error
+/// object, or an object with the message, or the message itself.
+pub(crate) fn error_event(data: &[u8]) -> Error {
+    let text = String::from_utf8_lossy(data);
+    let text = text.trim();
+
+    match serde_json::from_str::<Value>(text) {
+        Ok(Value::Object(body)) => match body.get(ERROR).filter(|error| !error.is_null()) {
+            Some(error) => server_error(error),
+            None => server_error(&Value::Object(body)),
+        },
+        Ok(Value::String(message)) => server_error(&Value::String(message)),
+        _ => server_error(&Value::String(text.to_owned())),
+    }
 }
 
 #[cfg(test)]

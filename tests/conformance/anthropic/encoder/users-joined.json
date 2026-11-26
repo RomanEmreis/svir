@@ -1,0 +1,47 @@
+{
+  "description": "Two user messages in a row are one wire message.",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "hi"
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "again"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "max_tokens": 16,
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            },
+            {
+              "type": "text",
+              "text": "again"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

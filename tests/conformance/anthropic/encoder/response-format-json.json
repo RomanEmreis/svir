@@ -1,0 +1,21 @@
+{
+  "description": "JSON without a schema has no Messages layout: Unsupported (P18).",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "response_format": "json",
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "hi"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "error": "unsupported"
+  }
+}

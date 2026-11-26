@@ -1,12 +1,16 @@
 //! Server-sent event framing, one byte at a time, with limits.
 
+use std::borrow::Cow;
+
+use serde_json::{Map, Value};
+
 use crate::{Error, ErrorKind, Limits, Mode};
 
 /// A complete event: its data, and whether the server sent it as an `error` event.
 #[derive(Debug, PartialEq, Eq)]
-pub(super) struct Frame {
-    pub(super) data: Vec<u8>,
-    pub(super) error: bool,
+pub(crate) struct Frame {
+    pub(crate) data: Vec<u8>,
+    pub(crate) error: bool,
 }
 
 /// The type of the event being read.
@@ -21,9 +25,11 @@ enum Kind {
 
 /// Assembles the events of a byte stream: `message` events with their data, and `error` events.
 #[derive(Debug)]
-pub(super) struct Framer {
+pub(crate) struct Framer {
     mode: Mode,
     limits: Limits,
+    /// Every event type is part of the protocol, and its data says which it is.
+    named: bool,
     wire: usize,
     line: Vec<u8>,
     data: Vec<u8>,
@@ -31,10 +37,12 @@ pub(super) struct Framer {
 }
 
 impl Framer {
-    pub(super) fn new(mode: Mode, limits: Limits) -> Self {
+    /// A framer for a protocol whose events are `message` and `error` only.
+    pub(crate) fn new(mode: Mode, limits: Limits) -> Self {
         Self {
             mode,
             limits,
+            named: false,
             wire: 0,
             line: Vec::new(),
             data: Vec::new(),
@@ -42,8 +50,16 @@ impl Framer {
         }
     }
 
+    /// A framer for a protocol that names every event, and repeats the name in its data.
+    pub(crate) fn named(mode: Mode, limits: Limits) -> Self {
+        Self {
+            named: true,
+            ..Self::new(mode, limits)
+        }
+    }
+
     /// Feeds one byte. Returns the event this byte ends, if it ends one.
-    pub(super) fn byte(&mut self, byte: u8) -> Result<Option<Frame>, Error> {
+    pub(crate) fn byte(&mut self, byte: u8) -> Result<Option<Frame>, Error> {
         self.wire += 1;
         if self.wire > self.limits.wire_bytes {
             return Err(limit("the response is longer than the wire-byte limit"));
@@ -107,6 +123,7 @@ impl Framer {
             b"event" => match value {
                 b"message" => {}
                 b"error" => self.kind = Kind::Error,
+                _ if self.named => {}
                 _ if self.mode == Mode::Lenient => self.kind = Kind::Foreign,
                 _ => return Err(unsupported("a server-sent event type outside the protocol")),
             },
@@ -119,6 +136,30 @@ impl Framer {
         }
         Ok(())
     }
+}
+
+/// An event's data as text. Invalid UTF-8 is `Protocol` in strict mode, and replaced in lenient
+/// mode.
+pub(crate) fn text(data: &[u8], mode: Mode) -> Result<Cow<'_, str>, Error> {
+    match std::str::from_utf8(data) {
+        Ok(text) => Ok(Cow::Borrowed(text)),
+        Err(_) if mode == Mode::Lenient => Ok(String::from_utf8_lossy(data)),
+        Err(_) => Err(protocol("an event is not valid UTF-8")),
+    }
+}
+
+/// An event's data as a JSON object. Anything else is `Protocol` in strict mode, and `None`, to be
+/// skipped, in lenient mode.
+pub(crate) fn object(text: &str, mode: Mode) -> Result<Option<Map<String, Value>>, Error> {
+    match serde_json::from_str::<Value>(text.trim()) {
+        Ok(Value::Object(object)) => Ok(Some(object)),
+        _ if mode == Mode::Lenient => Ok(None),
+        _ => Err(protocol("an event is not a JSON object")),
+    }
+}
+
+fn protocol(detail: &'static str) -> Error {
+    Error::new(ErrorKind::Protocol).with_detail(detail)
 }
 
 fn limit(detail: &'static str) -> Error {
@@ -184,6 +225,18 @@ mod tests {
                 [frame("x", true), frame("", true), frame("y", false)]
             );
         }
+    }
+
+    #[test]
+    fn a_named_protocol_takes_every_event_type() {
+        let mut framer = Framer::named(Mode::Strict, Limits::default());
+        let mut frames = Vec::new();
+        for byte in b"event: message_start\ndata: a\n\nevent: ping\ndata: b\n\n" {
+            frames.extend(framer.byte(*byte).unwrap());
+        }
+
+        let data: Vec<&[u8]> = frames.iter().map(|frame| &frame.data[..]).collect();
+        assert_eq!(data, [&b"a"[..], &b"b"[..]]);
     }
 
     #[test]

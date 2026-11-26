@@ -1,0 +1,14 @@
+{
+  "description": "The input ends before message_stop.",
+  "file": "text.sse",
+  "cut_before": "event: message_stop",
+  "expect": {
+    "strict": {
+      "error": "truncated_stream",
+      "partial": {
+        "text": "Rivers meander."
+      }
+    },
+    "lenient": "same"
+  }
+}

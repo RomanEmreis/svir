@@ -16,13 +16,36 @@ use futures_core::Stream;
 use tokio::time::{Instant, Sleep};
 
 use crate::{
-    Completion, Error, ErrorKind, Event,
+    Completion, Error, ErrorKind, Event, anthropic,
     http::{Backend, Hyper},
-    openai::chat::{Decoder, truncated},
+    openai::{self, chat::truncated},
 };
 
 /// A timer. Boxed so that the streams stay `Unpin`, and `next` needs no pinning by the caller.
 type Timer = Pin<Box<Sleep>>;
+
+/// The decoder of the client's wire API: an enum, so that nothing is dispatched dynamically (D27).
+#[derive(Debug)]
+pub(crate) enum Decoding {
+    Chat(openai::chat::Decoder),
+    Messages(anthropic::messages::Decoder),
+}
+
+impl Decoding {
+    fn push(&mut self, bytes: &[u8]) -> Vec<Result<Event, Error>> {
+        match self {
+            Self::Chat(decoder) => decoder.push(bytes),
+            Self::Messages(decoder) => decoder.push(bytes),
+        }
+    }
+
+    fn finish(self) -> Result<(), Error> {
+        match self {
+            Self::Chat(decoder) => decoder.finish(),
+            Self::Messages(decoder) => decoder.finish(),
+        }
+    }
+}
 
 /// Something that watches the items of an [`EventStream`] go by.
 type Inspector = Box<dyn FnMut(&Result<Event, Error>) + Send>;
@@ -132,7 +155,7 @@ impl<B: Backend> fmt::Debug for RawStream<B> {
 /// whatever its layers.
 pub struct EventStream<B: Backend = Hyper> {
     bytes: Option<RawStream<B>>,
-    decoder: Option<Decoder>,
+    decoder: Option<Decoding>,
     queue: VecDeque<Result<Event, Error>>,
     /// Fires if nothing of the answer has arrived by then.
     first_token: Option<Timer>,
@@ -142,7 +165,7 @@ pub struct EventStream<B: Backend = Hyper> {
 }
 
 impl<B: Backend> EventStream<B> {
-    pub(crate) fn new(bytes: RawStream<B>, decoder: Decoder) -> Self {
+    pub(crate) fn new(bytes: RawStream<B>, decoder: Decoding) -> Self {
         Self {
             bytes: Some(bytes),
             decoder: Some(decoder),
@@ -240,7 +263,7 @@ impl<B: Backend> Stream for EventStream<B> {
                 Poll::Ready(Some(Err(error))) => this.queue.push_back(Err(error)),
                 Poll::Ready(None) => {
                     this.bytes = None;
-                    if let Some(Err(error)) = this.decoder.take().map(Decoder::finish) {
+                    if let Some(Err(error)) = this.decoder.take().map(Decoding::finish) {
                         this.queue.push_back(Err(error));
                     }
                 }

@@ -1,0 +1,48 @@
+{
+  "description": "A redacted block is kept with its data as the signature and no text, and emits no live reasoning.",
+  "file": "redacted.sse",
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "stop",
+        "text": "Fine.",
+        "reasoning": [
+          {
+            "source": "redacted_thinking",
+            "text": "",
+            "signature": "enc-xyz"
+          },
+          {
+            "source": "thinking",
+            "text": "Short.",
+            "signature": "sig-B"
+          }
+        ],
+        "parts": [
+          {
+            "reasoning": {
+              "source": "redacted_thinking",
+              "text": "",
+              "signature": "enc-xyz"
+            }
+          },
+          {
+            "reasoning": {
+              "source": "thinking",
+              "text": "Short.",
+              "signature": "sig-B"
+            }
+          },
+          {
+            "text": "Fine."
+          }
+        ],
+        "usage": {
+          "input": 15,
+          "output": 9
+        }
+      }
+    },
+    "lenient": "same"
+  }
+}

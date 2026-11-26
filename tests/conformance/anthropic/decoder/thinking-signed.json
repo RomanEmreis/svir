@@ -1,0 +1,37 @@
+{
+  "description": "A thinking block is its own reasoning with its signature, before the text in parts; thinking tokens are reasoning usage.",
+  "file": "thinking.sse",
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "stop",
+        "text": "Done.",
+        "reasoning": [
+          {
+            "source": "thinking",
+            "text": "Let me think. Twice.",
+            "signature": "sig-A1"
+          }
+        ],
+        "parts": [
+          {
+            "reasoning": {
+              "source": "thinking",
+              "text": "Let me think. Twice.",
+              "signature": "sig-A1"
+            }
+          },
+          {
+            "text": "Done."
+          }
+        ],
+        "usage": {
+          "input": 30,
+          "output": 40,
+          "reasoning": 25
+        }
+      }
+    },
+    "lenient": "same"
+  }
+}

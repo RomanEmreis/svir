@@ -1,13 +1,56 @@
-//! Runs the decoder cases of the conformance suite: `tests/conformance/decoder/*.json`, in the
-//! format described in `tests/conformance/README.md`.
+//! Runs the decoder cases of the conformance suite: `tests/conformance/decoder/*.json` for Chat
+//! Completions and `tests/conformance/anthropic/decoder/*.json` for Messages, in the format
+//! described in `tests/conformance/README.md`.
 
 #![allow(clippy::unwrap_used)]
 
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
-use svir::openai::chat::Decoder;
-use svir::{Event, Limits, Mode, Think};
+use svir::{Error, Event, Limits, Mode, Think, anthropic, openai};
+
+/// A decoder of one wire API, as the runner drives it.
+trait Decode: Sized {
+    fn build(mode: Mode, limits: Limits, think: Option<Think>) -> Self;
+    fn push(&mut self, bytes: &[u8]) -> Vec<Result<Event, Error>>;
+    fn finish(self) -> Result<(), Error>;
+}
+
+impl Decode for openai::chat::Decoder {
+    fn build(mode: Mode, limits: Limits, think: Option<Think>) -> Self {
+        let decoder = Self::new(mode).limits(limits);
+        match think {
+            Some(think) => decoder.think(think),
+            None => decoder,
+        }
+    }
+
+    fn push(&mut self, bytes: &[u8]) -> Vec<Result<Event, Error>> {
+        Self::push(self, bytes)
+    }
+
+    fn finish(self) -> Result<(), Error> {
+        Self::finish(self)
+    }
+}
+
+impl Decode for anthropic::messages::Decoder {
+    fn build(mode: Mode, limits: Limits, think: Option<Think>) -> Self {
+        let decoder = Self::new(mode).limits(limits);
+        match think {
+            Some(think) => decoder.think(think),
+            None => decoder,
+        }
+    }
+
+    fn push(&mut self, bytes: &[u8]) -> Vec<Result<Event, Error>> {
+        Self::push(self, bytes)
+    }
+
+    fn finish(self) -> Result<(), Error> {
+        Self::finish(self)
+    }
+}
 
 const DEFAULT_STRIDES: [usize; 3] = [1, 3, 8192];
 
@@ -23,8 +66,10 @@ struct Run {
     visible: Vec<bool>,
 }
 
-fn case_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/conformance/decoder")
+fn case_dir(directory: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/conformance")
+        .join(directory)
 }
 
 fn hex(text: &str) -> Vec<u8> {
@@ -45,10 +90,10 @@ fn crlf(bytes: &[u8]) -> Vec<u8> {
     out
 }
 
-fn variants(case: &Value) -> Vec<Variant> {
+fn variants(dir: &Path, case: &Value) -> Vec<Variant> {
     let (pieces, from_file) = match case["file"].as_str() {
         Some(file) => {
-            let mut text = std::fs::read_to_string(case_dir().join(file)).unwrap();
+            let mut text = std::fs::read_to_string(dir.join(file)).unwrap();
             for pair in case["replace"].as_array().into_iter().flatten() {
                 let (from, to) = (pair[0].as_str().unwrap(), pair[1].as_str().unwrap());
                 assert!(text.contains(from), "replace pattern not found: {from}");
@@ -110,7 +155,7 @@ fn variants(case: &Value) -> Vec<Variant> {
     out
 }
 
-fn decoder(case: &Value, mode: Mode) -> Decoder {
+fn decoder<D: Decode>(case: &Value, mode: Mode) -> D {
     let options = &case["options"];
     let mut limits = Limits::default();
     if let Some(n) = options["limits"]["wire_bytes"].as_u64() {
@@ -122,17 +167,16 @@ fn decoder(case: &Value, mode: Mode) -> Decoder {
     if let Some(n) = options["limits"]["tool_calls"].as_u64() {
         limits = limits.tool_calls(n as usize);
     }
-    let mut decoder = Decoder::new(mode).limits(limits);
-    match options["think"].as_str() {
-        Some("split") => decoder = decoder.think(Think::Split),
-        Some("keep") => decoder = decoder.think(Think::Keep),
+    let think = match options["think"].as_str() {
+        Some("split") => Some(Think::Split),
+        Some("keep") => Some(Think::Keep),
         Some(other) => panic!("unknown think option {other}"),
-        None => {}
-    }
-    decoder
+        None => None,
+    };
+    D::build(mode, limits, think)
 }
 
-fn run(mut decoder: Decoder, chunks: &[Vec<u8>]) -> Run {
+fn run<D: Decode>(mut decoder: D, chunks: &[Vec<u8>]) -> Run {
     let (mut text, mut reasoning) = (String::new(), String::new());
     let mut visible = Vec::new();
     for chunk in chunks {
@@ -228,7 +272,18 @@ fn compare(expected: &Value, run: &Run, as_given: bool) -> Vec<String> {
 
 #[test]
 fn decoder_conformance() {
-    let mut paths: Vec<PathBuf> = std::fs::read_dir(case_dir())
+    conformance::<openai::chat::Decoder>("decoder", 300);
+}
+
+#[test]
+fn messages_decoder_conformance() {
+    conformance::<anthropic::messages::Decoder>("anthropic/decoder", 100);
+}
+
+/// Runs the cases of `directory`, which must make at least `least` runs.
+fn conformance<D: Decode>(directory: &str, least: usize) {
+    let dir = case_dir(directory);
+    let mut paths: Vec<PathBuf> = std::fs::read_dir(&dir)
         .unwrap()
         .map(|entry| entry.unwrap().path())
         .filter(|path| path.extension().is_some_and(|e| e == "json"))
@@ -252,9 +307,9 @@ fn decoder_conformance() {
                 pending.push(format!("{name} {mode:?}: open {}", expected["open"]));
                 continue;
             }
-            for variant in variants(&case) {
+            for variant in variants(&dir, &case) {
                 runs += 1;
-                let run = run(decoder(&case, mode), &variant.chunks);
+                let run = run(decoder::<D>(&case, mode), &variant.chunks);
                 for diff in compare(expected, &run, variant.as_given) {
                     let line = format!("{name} {mode:?} {}: {diff}", variant.label);
                     if open {
@@ -270,7 +325,7 @@ fn decoder_conformance() {
     for line in &pending {
         eprintln!("pending: {line}");
     }
-    assert!(runs > 300, "only {runs} runs");
+    assert!(runs > least, "only {runs} runs");
     assert!(
         failures.is_empty(),
         "{} failures:\n{}",

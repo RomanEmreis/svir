@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::ToolCall;
+use crate::{Part, ToolCall};
 
 /// Tokens per second is meaningless over a shorter window.
 const MIN_RATE_WINDOW: Duration = Duration::from_millis(50);
@@ -63,8 +63,13 @@ impl ToolCallDelta {
 pub struct Reasoning {
     /// Where it came from.
     pub source: ReasoningSource,
-    /// The reasoning text.
+    /// The reasoning text. Empty for a redacted thinking block, and for a thinking block whose
+    /// text the server did not return.
     pub text: String,
+    /// What the server needs back with this reasoning, unchanged: a thinking block's signature,
+    /// or a redacted block's encrypted data. Opaque, and only for sending back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
 }
 
 impl Reasoning {
@@ -73,7 +78,14 @@ impl Reasoning {
         Self {
             source,
             text: text.into(),
+            signature: None,
         }
+    }
+
+    /// Sets what the server needs back with this reasoning.
+    pub fn signature(mut self, signature: impl Into<String>) -> Self {
+        self.signature = Some(signature.into());
+        self
     }
 }
 
@@ -88,6 +100,11 @@ pub enum ReasoningSource {
     Reasoning,
     /// `<think>...</think>` inside the answer text.
     Think,
+    /// A thinking block of the Messages API, with its signature.
+    Thinking,
+    /// A redacted thinking block of the Messages API: no text, and its encrypted data as the
+    /// signature.
+    RedactedThinking,
 }
 
 /// Why the model stopped.
@@ -177,7 +194,8 @@ pub struct Completion {
     /// The answer.
     #[serde(default)]
     pub text: String,
-    /// Reasoning, one entry per source, in order of first appearance.
+    /// Reasoning in order of first appearance: one entry per source from Chat Completions, one
+    /// per thinking block from the Messages API.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reasoning: Vec<Reasoning>,
     /// Tool calls, complete and in order. Empty when the output limit cut the answer off: its
@@ -189,6 +207,11 @@ pub struct Completion {
     /// never to run; the next request leaves them out.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cut_calls: Vec<ToolCallDelta>,
+    /// The text, reasoning, and tool calls in the order they arrived, each text block its own
+    /// part: what goes back to the server, as it came. Empty means reasoning, then text, then
+    /// calls, the order Chat Completions always has.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<Part>,
     /// Token counts, when the server reported them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<Usage>,
@@ -206,6 +229,7 @@ impl Completion {
             reasoning: Vec::new(),
             calls: Vec::new(),
             cut_calls: Vec::new(),
+            parts: Vec::new(),
             usage: None,
             timing: None,
         }

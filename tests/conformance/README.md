@@ -10,8 +10,15 @@ on an open decision lists it in `open`.
 | Directory | Covers | Status |
 | --- | --- | --- |
 | `decoder/` | SSE framing, deltas, reasoning, refusals, tool calls, usage, limits, errors inside the stream, strict and lenient | 87 cases, run by `tests/conformance_decoder.rs` |
-| `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, tool choice and response format, admission | 44 cases, run by `tests/conformance_encoder.rs` |
+| `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, tool choice and response format, admission | 45 cases, run by `tests/conformance_encoder.rs` |
 | `transport/` | Authentication, extra headers, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 59 cases, run by `tests/conformance_transport.rs` |
+| `anthropic/decoder/` | The Anthropic Messages stream: blocks and deltas, signed and redacted thinking, tool calls, stop reasons, usage, unknown events, errors inside the stream | 36 cases, run by `tests/conformance_decoder.rs` |
+| `anthropic/encoder/` | Messages request bodies: blocks in order, thinking sent back, tool results, effort, tool choice and response format, admission | 30 cases, run by `tests/conformance_encoder.rs` |
+| `anthropic/transport/` | `/v1/messages`, the API version and the key, status mapping, errors inside the stream, the paged model listing | 10 cases, run by `tests/conformance_transport.rs` |
+
+The directories without a prefix are OpenAI-compatible Chat Completions; `anthropic/` holds the
+same three kinds of case for the Anthropic Messages API, in the same format, with the differences
+noted below.
 
 ## Decoder cases
 
@@ -64,9 +71,10 @@ A completion:
 | --- | --- |
 | `finish` | `stop`, `tool_calls`, `length`, `content_filter`, or `refusal`. Required. |
 | `text` | The answer. Default `""`. |
-| `reasoning` | `[{"source": ..., "text": ...}]`, one entry per carrier in order of first appearance, text concatenated. `source` is `reasoning_content`, `reasoning`, or `think`. Default `[]`. |
+| `reasoning` | `[{"source": ..., "text": ..., "signature": ...}]`. For Chat Completions, one entry per carrier in order of first appearance, text concatenated; `source` is `reasoning_content`, `reasoning`, or `think`. For Messages, one entry per thinking block, `source` `thinking` or `redacted_thinking`, with the block's `signature` (a redacted block's data, and no text), and one entry for `think` text joined. `signature` is present only when one arrived. Default `[]`. |
 | `calls` | `[{"id": ..., "name": ..., "arguments": ...}]` in index order; `arguments` is the raw string. Default `[]`. |
 | `cut_calls` | Calls a `length` finish cut off, which `calls` never holds (D47): `[{"index": n, "id": ..., "name": ..., "arguments": ...}]` in index order, `id` and `name` present only when they arrived, `arguments` only when not empty. Default `[]`. |
+| `parts` | The answer in wire order (D51): `{"text": ...}`, `{"reasoning": {...}}`, and `{"tool_call": {...}}`, as in the request notation, each text block its own part. Chat Completions leaves it empty. Default `[]`. |
 | `usage` | `{"input": n, "output": n}` plus `total` and `reasoning` when the server reported them. Default `null`. |
 
 Fields are compared exactly after defaults are filled in. This notation is the serde form of
@@ -106,6 +114,15 @@ runner skips it.
 | `llama-cpp-error.sse` | Recorded from llama.cpp: reasoning in `reasoning_content`, then an error object with a numeric `code` and type `server_error` where the server's parser failed, and no `[DONE]`. The home directory in the model path is replaced. |
 | `vllm-named-tool.sse` | Recorded from vLLM with its reasoning and tool-call parsers, asked to call a named function: reasoning in `reasoning`, one call, a `stop` finish, usage with reasoning tokens. |
 
+Fixtures of `anthropic/decoder/`, written from the API's documented event shapes:
+
+| File | Content |
+| --- | --- |
+| `text.sse` | One text block in two deltas, a `ping`, cache counts in the input usage, `end_turn`. |
+| `thinking.sse` | A thinking block in two deltas with its signature, a text block, `end_turn`, thinking tokens in the usage. |
+| `tools.sse` | A text block, a call whose input arrives in pieces, one empty, and a call with no input pieces; `tool_use`. |
+| `redacted.sse` | A redacted thinking block, a thinking block, a text block, `end_turn`. |
+
 ## Requests
 
 Encoder and transport cases describe a request in a neutral form. It is the suite's notation, not
@@ -139,7 +156,7 @@ Parts:
 | `{"text": ...}` | any | Text |
 | `{"image": key}` | user | An image from `attachments` |
 | `{"file": key}` | user | A text file from `attachments` |
-| `{"reasoning": {"source": ..., "text": ...}}` | assistant | Reasoning received with this answer |
+| `{"reasoning": {"source": ..., "text": ..., "signature": ...}}` | assistant | Reasoning received with this answer; `signature` only when it came with one |
 | `{"tool_call": {"id": ..., "name": ..., "arguments": ...}}` | assistant | A call the model made; `arguments` is the raw string |
 | `{"tool_result": {"call_id": ..., "content": ..., "is_error": true}}` | tool | The caller's result for a call, as a string; `is_error` marks a failed call and is present only when true |
 
@@ -203,8 +220,8 @@ A reply is `{"status", "headers", "body" or "body_file", "cut_before", "then"}` 
 
 A call is `{"request", "list_models", "client", "expect"}`:
 
-- `request` defaults to model `m` with one user message `hi`. `"list_models": true` lists models
-  instead of generating.
+- `request` defaults to model `m` with one user message `hi`, and `max_tokens` 16 for the
+  Messages API, which needs it. `"list_models": true` lists models instead of generating.
 - `client` is a list of actions, by default `["read_all"]`: `"read_all"` reads until a completion
   or an error, `{"read_events": n}` reads n events, `{"read_for_ms": n}` reads for at most n
   milliseconds, and `"cancel"` drops the stream.
