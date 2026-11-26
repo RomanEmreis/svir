@@ -1,0 +1,48 @@
+{
+  "description": "Recorded from LM Studio serving a model whose format it parses: a thinking block with no signature, a text block, and a call whose input arrives in pieces, with a tool_use stop.",
+  "file": "lmstudio-tools.sse",
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "tool_calls",
+        "text": "\n\n",
+        "reasoning": [
+          {
+            "source": "thinking",
+            "text": "The user wants me to open locker 7 and report what's inside.\n"
+          }
+        ],
+        "calls": [
+          {
+            "id": "401046080",
+            "name": "open_locker",
+            "arguments": "{\"number\":7}"
+          }
+        ],
+        "parts": [
+          {
+            "reasoning": {
+              "source": "thinking",
+              "text": "The user wants me to open locker 7 and report what's inside.\n"
+            }
+          },
+          {
+            "text": "\n\n"
+          },
+          {
+            "tool_call": {
+              "id": "401046080",
+              "name": "open_locker",
+              "arguments": "{\"number\":7}"
+            }
+          }
+        ],
+        "usage": {
+          "input": 323,
+          "output": 45
+        }
+      }
+    },
+    "lenient": "same"
+  }
+}

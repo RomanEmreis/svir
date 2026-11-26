@@ -38,11 +38,13 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
 10. **`testing`.** The scripted server and scripted event streams, published for callers' tests.
 11. **Anthropic Messages.** Done in code: `Client::anthropic()` and `svir::anthropic::messages`,
     with signed and redacted thinking, a completion that keeps its blocks in order, effort as
-    adaptive thinking, and the paged model listing (D50-D55, P18, P19). All 36 decoder, 30
-    encoder, and 10 transport cases in `tests/conformance/anthropic/` pass. Still to do: a live
-    run, against the hosted API and a local server with a Messages endpoint
-    (`SVIR_API=anthropic` in `tests/live.rs`), and recordings from it in place of the fixtures
-    written from the documentation.
+    adaptive thinking, and the paged model listing (D50-D55, P18, P19). All 38 decoder, 30
+    encoder, and 10 transport cases in `tests/conformance/anthropic/` pass. Run live against LM
+    Studio (`SVIR_API=anthropic` in `tests/live.rs`): with Qwen3.8, 11 of 13 pass, the tool loop
+    with thinking sent back included; the two that fail ask for a named tool and a schema,
+    which LM Studio's Messages endpoint ignores. With inkling-2-mini, 10 of 13, as LM Studio
+    does not parse that model's format (wire-protocol-anthropic 6.1). Two answers are recorded
+    as fixtures. Still to do: the hosted API.
 
 ## Conformance suite
 
@@ -57,7 +59,7 @@ written for all three components:
 - `transport/`: 59 cases. Authentication, the caller's headers, status mapping, the stream,
   timeouts, cancellation, base URLs, model listing, and compatibility learning, against a
   scripted loopback server.
-- `anthropic/`: the same three for the Messages API. 36 decoder cases on blocks, signed and
+- `anthropic/`: the same three for the Messages API. 38 decoder cases on blocks, signed and
   redacted thinking, tool calls, stop reasons, usage, and unknown events; 30 encoder cases on the
   layout, thinking sent back, effort, tool choice, response format, and admission; 10 transport
   cases on the version and key headers, status mapping, and the paged model listing.
