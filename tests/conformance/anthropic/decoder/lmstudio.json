@@ -1,0 +1,22 @@
+{
+  "description": "Recorded from LM Studio serving a model whose format it does not parse: the reasoning and the model's own markers arrive as text in one block, and message_delta repeats the input count.",
+  "file": "lmstudio.sse",
+  "expect": {
+    "strict": {
+      "completion": {
+        "finish": "stop",
+        "text": "<|message_model|><|content_thinking|>The user asks to reply with a single word: \"heron\". Need final exactly that single word, no extra punctuation? They said reply with the single word: heron. So final should be \"heron\" only. Ensure no extra text.<|end_message|><|message_model|><|content_text|>heron<|end_message|>",
+        "parts": [
+          {
+            "text": "<|message_model|><|content_thinking|>The user asks to reply with a single word: \"heron\". Need final exactly that single word, no extra punctuation? They said reply with the single word: heron. So final should be \"heron\" only. Ensure no extra text.<|end_message|><|message_model|><|content_text|>heron<|end_message|>"
+          }
+        ],
+        "usage": {
+          "input": 23,
+          "output": 62
+        }
+      }
+    },
+    "lenient": "same"
+  }
+}

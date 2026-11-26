@@ -163,7 +163,37 @@ Errors are JSON: `{"type": "error", "error": {"type", "message"}, "request_id"}`
 
 A response may carry `x-should-retry: true` or `false`.
 
-## 6. Model listing
+## 6. Observed servers
+
+### 6.1 LM Studio
+
+Observed on 2026-11-26 at `/v1/messages`, serving `thinkingmachines/inkling-2-mini` and
+`qwen/qwen3.8-27b`:
+
+- The stream follows section 3: `message_start`, one block, `message_delta`, `message_stop`, no
+  `ping`. `message_start` reports `input_tokens`, `output_tokens` 0, and
+  `cache_read_input_tokens` 0; `message_delta` repeats the input count beside the output.
+- `anthropic-version: 2026-10-21`, `thinking` (adaptive or disabled), and `output_config` are
+  taken without an error.
+- With Qwen3.8, whose format it parses, the answer is blocks: a `thinking` block with no
+  `signature` at its start and no `signature_delta`, a `text` block (`"\n\n"` before a call), and
+  `tool_use` blocks whose input arrives as `input_json_delta` pieces, with a `tool_use` stop. It
+  takes a thinking block back with an empty signature, and tool results, so a tool loop
+  completes.
+- `tool_choice` `{type: "tool", name}` is ignored: the model answers as it likes, with
+  `end_turn`. Chat Completions on the same server rejects a named tool choice with 400 instead.
+- `output_config.format` has no effect, nor has the older `output_format`: the answer is prose.
+- It has no parser for inkling-2-mini's format. The reasoning, the model's markers
+  (`<|message_model|>`, `<|content_thinking|>`, `<|content_text|>`, `<|end_message|>`), and a tool
+  call written as `<|content_invoke_tool_json|>{"name": ..., "args": ...}` all arrive as text in
+  one `text` block, with `end_turn`. `tool_choice` and `output_config.format` change nothing.
+  Chat Completions on the same server sends the same text as `content`, with no `tool_calls` and
+  a `stop` finish.
+
+`anthropic/decoder/lmstudio.sse` is an inkling-2-mini answer, and `lmstudio-tools.sse` a Qwen3.8
+call.
+
+## 7. Model listing
 
 `GET /v1/models` returns `{data: [{type: "model", id, display_name, created_at, ...}], has_more,
 first_id, last_id}`, newest first. `limit` takes 1 to 1000 (default 20), and `after_id` the

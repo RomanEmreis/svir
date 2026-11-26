@@ -12,7 +12,7 @@ on an open decision lists it in `open`.
 | `decoder/` | SSE framing, deltas, reasoning, refusals, tool calls, usage, limits, errors inside the stream, strict and lenient | 87 cases, run by `tests/conformance_decoder.rs` |
 | `encoder/` | Request bodies, attachments, exact length, reasoning and tool round trips, tool choice and response format, admission | 45 cases, run by `tests/conformance_encoder.rs` |
 | `transport/` | Authentication, extra headers, status mapping, timeouts, cancellation, base URLs, model listing, compatibility learning | 59 cases, run by `tests/conformance_transport.rs` |
-| `anthropic/decoder/` | The Anthropic Messages stream: blocks and deltas, signed and redacted thinking, tool calls, stop reasons, usage, unknown events, errors inside the stream | 36 cases, run by `tests/conformance_decoder.rs` |
+| `anthropic/decoder/` | The Anthropic Messages stream: blocks and deltas, signed and redacted thinking, tool calls, stop reasons, usage, unknown events, errors inside the stream | 38 cases, run by `tests/conformance_decoder.rs` |
 | `anthropic/encoder/` | Messages request bodies: blocks in order, thinking sent back, tool results, effort, tool choice and response format, admission | 30 cases, run by `tests/conformance_encoder.rs` |
 | `anthropic/transport/` | `/v1/messages`, the API version and the key, status mapping, errors inside the stream, the paged model listing | 10 cases, run by `tests/conformance_transport.rs` |
 
@@ -114,7 +114,8 @@ runner skips it.
 | `llama-cpp-error.sse` | Recorded from llama.cpp: reasoning in `reasoning_content`, then an error object with a numeric `code` and type `server_error` where the server's parser failed, and no `[DONE]`. The home directory in the model path is replaced. |
 | `vllm-named-tool.sse` | Recorded from vLLM with its reasoning and tool-call parsers, asked to call a named function: reasoning in `reasoning`, one call, a `stop` finish, usage with reasoning tokens. |
 
-Fixtures of `anthropic/decoder/`, written from the API's documented event shapes:
+Fixtures of `anthropic/decoder/`, written from the API's documented event shapes, but for two
+recordings:
 
 | File | Content |
 | --- | --- |
@@ -122,6 +123,8 @@ Fixtures of `anthropic/decoder/`, written from the API's documented event shapes
 | `thinking.sse` | A thinking block in two deltas with its signature, a text block, `end_turn`, thinking tokens in the usage. |
 | `tools.sse` | A text block, a call whose input arrives in pieces, one empty, and a call with no input pieces; `tool_use`. |
 | `redacted.sse` | A redacted thinking block, a thinking block, a text block, `end_turn`. |
+| `lmstudio.sse` | Recorded from LM Studio serving a model whose format it does not parse: the reasoning and the model's markers as one text block, `end_turn`, the input count repeated in `message_delta`. |
+| `lmstudio-tools.sse` | Recorded from LM Studio serving Qwen3.8: a thinking block with no signature, a text block, a call whose input arrives in pieces, `tool_use`. |
 
 ## Requests
 
