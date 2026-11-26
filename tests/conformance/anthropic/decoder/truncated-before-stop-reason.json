@@ -1,0 +1,14 @@
+{
+  "description": "The input ends after the blocks, before message_delta.",
+  "file": "text.sse",
+  "cut_before": "event: message_delta",
+  "expect": {
+    "strict": {
+      "error": "truncated_stream",
+      "partial": {
+        "text": "Rivers meander."
+      }
+    },
+    "lenient": "same"
+  }
+}

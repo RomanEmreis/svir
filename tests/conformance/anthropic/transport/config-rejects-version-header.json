@@ -1,0 +1,10 @@
+{
+  "description": "The API version is svir's to write: a caller's anthropic-version is refused (D38).",
+  "config": {
+    "base_url": "http://127.0.0.1:1234",
+    "headers": {
+      "anthropic-version": "2023-06-01"
+    }
+  },
+  "expect_config": "rejected"
+}

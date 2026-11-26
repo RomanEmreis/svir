@@ -3,6 +3,7 @@
 What svir needs to know about `POST /v1/chat/completions` with `stream: true`, as observed across
 LM Studio, mlx-lm, mlx-vlm, llama.cpp, vLLM, Azure OpenAI, and the OpenAI streaming schema. This is a reference of facts
 and observed server behavior. How svir handles each fact is in [architecture.md](architecture.md).
+The Anthropic Messages API is in [wire-protocol-anthropic.md](wire-protocol-anthropic.md).
 
 What is said of mlx-lm and mlx-vlm was observed with mlx-lm 0.32.0 and mlx-vlm 0.7.6 serving
 Qwen3.8 27B (MLX, 4-bit), a model that reasons, calls tools, and sees images. What is said of

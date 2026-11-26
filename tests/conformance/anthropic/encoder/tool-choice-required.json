@@ -1,0 +1,57 @@
+{
+  "description": "A required call of any tool is {type: any}.",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "tools": [
+      {
+        "name": "lookup",
+        "description": "Looks a city up.",
+        "input_schema": {
+          "type": "object"
+        }
+      }
+    ],
+    "tool_choice": "required",
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "hi"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "max_tokens": 16,
+      "stream": true,
+      "tools": [
+        {
+          "name": "lookup",
+          "description": "Looks a city up.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "tool_choice": {
+        "type": "any"
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

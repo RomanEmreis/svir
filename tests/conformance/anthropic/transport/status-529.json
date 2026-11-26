@@ -1,0 +1,31 @@
+{
+  "description": "529 overloaded is a transient transport failure.",
+  "config": {
+    "base_url": "{server}"
+  },
+  "server": [
+    {
+      "status": 529,
+      "headers": {
+        "content-type": "application/json"
+      },
+      "body": "{\"type\": \"error\", \"error\": {\"type\": \"overloaded_error\", \"message\": \"Overloaded\"}, \"request_id\": \"req_1\"}"
+    }
+  ],
+  "calls": [
+    {
+      "expect": {
+        "error": "transport",
+        "retryable": true,
+        "status": 529,
+        "message": "Overloaded"
+      }
+    }
+  ],
+  "expect_requests": [
+    {
+      "method": "POST",
+      "path": "/v1/messages"
+    }
+  ]
+}

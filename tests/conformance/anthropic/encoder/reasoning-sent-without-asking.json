@@ -1,0 +1,103 @@
+{
+  "description": "Messages reasoning goes back whatever send_reasoning says (D54).",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "hi"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "parts": [
+          {
+            "reasoning": {
+              "source": "thinking",
+              "text": "plan",
+              "signature": "s1"
+            }
+          },
+          {
+            "text": "Checking."
+          },
+          {
+            "tool_call": {
+              "id": "toolu_1",
+              "name": "lookup",
+              "arguments": "{\"city\":\"Paris\"}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "parts": [
+          {
+            "tool_result": {
+              "call_id": "toolu_1",
+              "content": "sunny"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "options": {
+    "send_reasoning": false
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "max_tokens": 16,
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "plan",
+              "signature": "s1"
+            },
+            {
+              "type": "text",
+              "text": "Checking."
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_1",
+              "name": "lookup",
+              "input": {
+                "city": "Paris"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_1",
+              "content": "sunny"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

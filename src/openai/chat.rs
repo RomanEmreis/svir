@@ -6,11 +6,6 @@
 
 mod decoder;
 mod encoder;
-mod overflow;
-mod sse;
-#[cfg(feature = "client")]
-pub(crate) mod status;
-mod think;
 mod wire;
 
 pub use crate::body::Body;

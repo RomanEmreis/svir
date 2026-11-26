@@ -5,9 +5,10 @@
 //! sit on top, opt-in. There is no agent loop: feeding tool results back is a few lines of the
 //! caller's code.
 //!
-//! With the `client` feature, `Client` sends a [`Request`] to an OpenAI-compatible server and
-//! returns the answer whole or as an `EventStream`. The codec under it,
-//! [`openai::chat::Encoder`] and [`openai::chat::Decoder`], works on its own with any transport.
+//! With the `client` feature, `Client` sends a [`Request`] to an OpenAI-compatible server, or to
+//! the Anthropic Messages API, and returns the answer whole or as an `EventStream`. The codecs
+//! under it, [`openai::chat`] and [`anthropic::messages`], each an encoder and a decoder, work on
+//! their own with any transport.
 //! Layers (`svir::layer`) wrap every call; [`Toolbox`] and [`Tools`] describe tools to a model
 //! and answer its calls.
 //!
@@ -27,14 +28,20 @@
 //! assert_eq!(request.messages[0].parts.len(), 4);
 //! ```
 
+pub mod anthropic;
 pub mod body;
 mod decode;
+mod encode;
 mod error;
 mod message;
+mod overflow;
 mod request;
 mod response;
+mod sse;
+mod think;
 mod tool;
 mod tools;
+mod wire;
 
 #[cfg(feature = "client")]
 mod client;
@@ -43,6 +50,8 @@ pub mod http;
 #[cfg(feature = "client")]
 pub mod layer;
 pub mod openai;
+#[cfg(feature = "client")]
+mod status;
 #[cfg(feature = "client")]
 mod stream;
 

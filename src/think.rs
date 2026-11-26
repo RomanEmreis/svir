@@ -8,17 +8,17 @@ const OPEN: &str = "<think>";
 const CLOSE: &str = "</think>";
 
 /// A piece of split text: `true` for reasoning, `false` for the answer.
-pub(super) type Piece = (bool, String);
+pub(crate) type Piece = (bool, String);
 
 #[derive(Debug, Default)]
-pub(super) struct ThinkSplitter {
+pub(crate) struct ThinkSplitter {
     carry: String,
     inside: bool,
 }
 
 impl ThinkSplitter {
     /// Splits the next delta of answer text. Pieces come in order and are never empty.
-    pub(super) fn push(&mut self, text: &str) -> Vec<Piece> {
+    pub(crate) fn push(&mut self, text: &str) -> Vec<Piece> {
         let mut pieces = Vec::new();
         let mut buf = std::mem::take(&mut self.carry);
         buf.push_str(text);
@@ -42,7 +42,7 @@ impl ThinkSplitter {
     }
 
     /// Writes out a held tail at the end of the stream.
-    pub(super) fn flush(&mut self) -> Option<Piece> {
+    pub(crate) fn flush(&mut self) -> Option<Piece> {
         let carry = std::mem::take(&mut self.carry);
         (!carry.is_empty()).then_some((self.inside, carry))
     }

@@ -1,0 +1,32 @@
+{
+  "description": "429 is a rate limit, with retry-after in seconds.",
+  "config": {
+    "base_url": "{server}"
+  },
+  "server": [
+    {
+      "status": 429,
+      "headers": {
+        "content-type": "application/json",
+        "retry-after": "3"
+      },
+      "body": "{\"type\": \"error\", \"error\": {\"type\": \"rate_limit_error\", \"message\": \"slow down\"}, \"request_id\": \"req_1\"}"
+    }
+  ],
+  "calls": [
+    {
+      "expect": {
+        "error": "rate_limited",
+        "retryable": true,
+        "retry_after_ms": 3000,
+        "status": 429
+      }
+    }
+  ],
+  "expect_requests": [
+    {
+      "method": "POST",
+      "path": "/v1/messages"
+    }
+  ]
+}

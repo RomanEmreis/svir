@@ -56,14 +56,22 @@ async fn main() -> Result<(), svir::Error> {
 `client.complete(&request)` returns the whole answer instead. Dropping the stream cancels the
 request.
 
+The same request goes to the Anthropic Messages API through `Client::anthropic()`, once it sets
+`max_tokens`, which that API requires:
+
+```rust,ignore
+let claude = Client::anthropic().api_key_env("ANTHROPIC_API_KEY").build()?;
+let answer = claude.complete(request.max_tokens(4096)).await?;
+```
+
 Plain HTTP is all a server on loopback needs. For HTTPS, pick a crypto provider for rustls:
 `features = ["tls-ring"]`, or `["tls-aws-lc"]` for a build that has aws-lc-rs already. Without
 either, an `https` URL is refused when the client is built.
 
 ## What it covers
 
-The first protocol is OpenAI-compatible Chat Completions streaming, as served by LM Studio,
-mlx-lm, llama.cpp, vLLM, and hosted endpoints.
+Two wire APIs, behind the same types: OpenAI-compatible Chat Completions streaming, as served by
+LM Studio, mlx-lm, llama.cpp, vLLM, and hosted endpoints, and the Anthropic Messages API.
 
 - **Types**: messages with text, image, and file parts; tool descriptors, calls, and results; a
   tool call required or forbidden; an answer as JSON, or JSON to a schema; usage; finish reasons;
@@ -72,8 +80,9 @@ mlx-lm, llama.cpp, vLLM, and hosted endpoints.
   `Content-Length` known before the first byte. That length is also the context estimate, with
   each image capped at what a model may charge for one.
 - **Decoder**: SSE framing, tool calls assembled across deltas, reasoning from
-  `reasoning_content`, `reasoning`, or inline `<think>` tags, usage, errors inside the stream, and
-  hard limits. Strict by default, lenient on request.
+  `reasoning_content`, `reasoning`, inline `<think>` tags, or signed thinking blocks, usage,
+  errors inside the stream, and hard limits. Strict by default, lenient on request. An answer
+  keeps its blocks in order, so it goes back to the server as it came.
 - **Transport**: HTTP, and HTTPS through rustls with ring or aws-lc-rs, with optional Bearer
   authentication and headers of the caller's own, typed status mapping, timeouts, and
   cancellation by drop.

@@ -1,8 +1,8 @@
 # Architecture
 
-Status: design. Nothing here is implemented yet. Decisions referenced as `D<n>`, `P<n>`, and
-`O<n>` are recorded in [decisions.md](decisions.md); protocol facts are in
-[wire-protocol.md](wire-protocol.md).
+Decisions referenced as `D<n>`, `P<n>`, and `O<n>` are recorded in [decisions.md](decisions.md);
+protocol facts are in [wire-protocol.md](wire-protocol.md) for Chat Completions and in
+[wire-protocol-anthropic.md](wire-protocol-anthropic.md) for the Anthropic Messages API.
 
 ## 1. What svir is
 
@@ -13,7 +13,8 @@ an agent framework: it does not run a tool loop (D6), keep a session history, st
 speak MCP (D7).
 
 The first protocol is OpenAI-compatible Chat Completions streaming (D9), as served by LM Studio,
-mlx-lm, llama.cpp, vLLM, and hosted endpoints.
+mlx-lm, llama.cpp, vLLM, and hosted endpoints. The second is the Anthropic Messages API (D50), the
+hosted one and servers with a Messages endpoint.
 
 ## 2. Where the design comes from
 
@@ -42,8 +43,8 @@ In svir:
 - **Encoder**: a request becomes a byte stream with an exact length known before the first byte
   is sent. The length doubles as the context-admission estimate, with each image capped
   (D10, D49).
-- **Decoder**: SSE framing, deltas, tool-call assembly, all three reasoning carriers, usage,
-  mid-stream errors, and limits.
+- **Decoder**: SSE framing, deltas or content blocks, tool-call assembly, every reasoning
+  carrier, usage, mid-stream errors, and limits.
 - **Transport**: the HTTP request, authentication, status mapping, timeouts, and cancellation.
 - **Compatibility**: learning what a particular server accepts, once per server (D11).
 - **Client**: one type over every wire API, with requests, messages, and streams (D13).
@@ -96,15 +97,19 @@ builder methods, with public fields for reading.
   `Completion::tokens_per_second` applies the rule of P7.
 - **Finish reason** is `stop`, `tool_calls`, `length`, `content_filter` (D35), or `refusal`,
   when the model refused and the text is its refusal (D42). Any other is an error in both modes.
-- **Reasoning** carries its source (`reasoning_content`, `reasoning`, or `think`), which is all
-  Chat Completions needs to send it back. Opaque continuation data, such as signed thinking
-  blocks, arrives with the first wire API that needs it (O6).
+- **Reasoning** carries its source (`reasoning_content`, `reasoning`, `think`, `thinking`, or
+  `redacted_thinking`) and, from the Messages API, a `signature`: what the server needs back
+  with it, unchanged (D54). A redacted block has no text, and its data as the signature.
+- A **completion** keeps its text, reasoning, and calls in the order they arrived as `parts`, so
+  that a Messages answer goes back as it came; empty `parts` means reasoning, text, calls, the
+  order Chat Completions always has (D51).
 - **Decoding options**: `Mode` (`Strict` by default), `Limits`, and `Think` (`Split` or `Keep`;
   `Split` by default, D23).
 
 ### 4.2 Encoder
 
-It is `svir::openai::chat::Encoder`, and it produces a `Body` (P2):
+It is `svir::openai::chat::Encoder`, or `svir::anthropic::messages::Encoder` for the Messages
+API, and each produces a `Body` (P2):
 
 - `encoder.encode(&request)` does no I/O and takes attachments held in memory;
 - `encoder.encode_files(&request).await` (feature `client`) first measures attachments held as
@@ -155,6 +160,15 @@ the context size and `max_tokens` must not be 0, or the request fails with `Cont
 before a byte is sent. The estimate is the length, with each image's base64 counted as no more
 than `encoder.image_tokens(n)`, 16384 by default (D49).
 
+The Messages encoder lays the request out as P18 says: `max_tokens` required (D53), the system
+prompt a top-level string, every part a block of its own in the order given, a model message sent
+back as it came with its thinking blocks (D54), tool results as `tool_result` blocks of a user
+message with `is_error` for a failed one, and messages of one wire role in a row joined. An
+effort level is adaptive thinking, shown as a summary, at that `output_config.effort`; `Off`
+turns thinking off, and `Minimal` has no level (D52). A tool choice is `none`, `any`, or one
+tool, and a schema goes in `output_config.format`; a JSON answer without a schema has no layout
+there.
+
 ### 4.3 Decoder
 
 The decoder is push-based and does no I/O: bytes go in, events come out. That lets it read a
@@ -184,6 +198,7 @@ struct Completion {
     reasoning: Vec<Reasoning>,
     calls: Vec<ToolCall>,
     cut_calls: Vec<ToolCallDelta>, // a `Length` finish's calls, never executable (D47)
+    parts: Vec<Part>,              // the answer in wire order, when it has one (D51)
     usage: Option<Usage>,
     timing: Option<Timing>,
 }
@@ -257,15 +272,31 @@ call ID repeated on later pieces of the same call is consistent; one that change
 Limits and their current defaults: 64 MiB of wire bytes per attempt (D32), 256 KiB per SSE
 event, and 64 tool calls per response.
 
+The Messages decoder, `svir::anthropic::messages::Decoder`, reads named events and content blocks
+(P19) with the same modes and limits. An event type it does not know is skipped in both modes,
+as the API's versioning policy asks, and so are fields added to known objects; a block type or a
+delta type it does not know is `Unsupported` in strict mode and skipped in lenient mode (D55).
+What makes the answer ambiguous fails in both: a delta for a block that is not open or of the
+wrong type for it, a block index out of order. Stop reasons map to the same finishes, `refusal`
+to `Refusal` with the text before it kept, and the completion holds each thinking block with
+its signature, and every block in `parts` (D51, D54).
+
 ### 4.5 Reasoning
 
-Reasoning arrives in three carriers (see [wire-protocol.md](wire-protocol.md#4-reasoning)):
+From Chat Completions, reasoning arrives in three carriers (see
+[wire-protocol.md](wire-protocol.md#4-reasoning)):
 `reasoning_content`, `reasoning`, and `<think>...</think>` inside `content`. The decoder emits all
 of them as live `Reasoning` events tagged with their source and also keeps them in the
 completion (P5). The same text under both keys in one delta is one piece, under
 `reasoning_content` (D43). The carrier matters when sending reasoning back: a server expects its
 own field back, unchanged. Splitting `<think>` is on by default, and reasoning split out of the tags is never
 sent back (D23).
+
+From the Messages API, reasoning is thinking blocks, each with a signature, and redacted blocks
+with encrypted data. A thinking block's text is a live `Reasoning` event, empty when the server
+hides it; a redacted block shows nothing. Both always go back to the Messages API, as they came,
+whatever `send_reasoning` says; neither goes to Chat Completions, and no other carrier goes to
+the Messages API (D54).
 
 Splitting `<think>` is a streaming problem: a marker can be cut by a chunk boundary, so a
 possible partial marker at the end of a chunk is held back until the next chunk decides it. At the
@@ -275,9 +306,12 @@ length is measured in bytes on character boundaries, so multi-byte text is never
 ### 4.6 Transport
 
 Behind the `client` feature, so the codec can be used with any HTTP client (P2, D14). Each wire
-API has an adapter under the one `Client` type (D13). The adapter posts the encoded body, adds
-`Authorization: Bearer` when a key is configured (D17), maps HTTP status codes to error kinds, and
-requires a `text/event-stream` response before decoding. Layers wrap the adapter (D15).
+API has an adapter under the one `Client` type (D13): `Client::openai(url)` for Chat
+Completions, and `Client::anthropic()` for the Messages API at `https://api.anthropic.com`, or
+elsewhere with `.base_url(url)` (D50). The adapter posts the encoded body, adds
+`Authorization: Bearer` when a key is configured (D17), and `anthropic-version: 2026-10-21` for
+the Messages API, maps HTTP status codes to error kinds, and requires a `text/event-stream`
+response before decoding. Layers wrap the adapter (D15).
 
 The HTTP itself is hyper, behind a seam (D25). `svir::http::Backend` is a trait with one method:
 send an `HttpRequest` (method, URL, headers, and a body of known length as a `BodyStream`) and
@@ -317,7 +351,8 @@ mapping and compatibility handling, for a proxy that relays them and decodes the
 
 The base URL is accepted with or without `/v1` and trailing slashes; one with credentials, a query,
 or a fragment is refused. Model listing returns what `GET /v1/models` reports, `id` and optional
-`name`, without filtering (O10).
+`name`, without filtering (O10); from the Messages API, every page of it, with `display_name` as
+the name (D50).
 
 Cancellation is dropping the stream: that closes the connection, including between events that
 were already buffered.
@@ -333,7 +368,8 @@ cheap-to-clone handle shared by every request to that server. A 400/422 means no
 generated, so this retry is safe. A 400 or 422 that is a context overflow, or a prompt the
 content filter blocked, is not about those fields and is reported without the retry (D26, D36).
 `ClientBuilder::lean_retry(false)` turns the retry off: the rejection is reported, and nothing
-is learned (D48).
+is learned (D48). The Messages API has no such retry: its encoder writes only what the request
+set (D50).
 
 A tool choice and a response format are not optional in this sense: the answer must meet them.
 The retry keeps them, a server learned to be strict still gets them, and a request that carries
@@ -346,7 +382,7 @@ Every failure is a typed kind with a `retryable` flag and an optional retry dela
 
 | Kind | Retryable | Raised for |
 | --- | --- | --- |
-| `Transport` | yes | Connection failure; HTTP 500, 502, 503 |
+| `Transport` | yes | Connection failure; HTTP 500, 502, 503, 529 |
 | `Timeout` | yes | Client timeout; HTTP 408, 504 |
 | `RateLimited` | yes | HTTP 429 |
 | `TruncatedStream` | yes | Stream ended before a finish reason and `[DONE]` |
@@ -398,6 +434,14 @@ while let Some(event) = stream.next().await {
         _ => {}
     }
 }
+```
+
+The same request goes to the Messages API through `Client::anthropic()`, once it sets
+`max_tokens`, which that API requires (D53):
+
+```rust
+let claude = Client::anthropic().api_key_env("ANTHROPIC_API_KEY").build()?;
+let answer = claude.complete(request.clone().max_tokens(4096)).await?;
 ```
 
 **Attachments, tools, and composition.** The loop that feeds tool results back is caller code
@@ -538,7 +582,8 @@ async fn ask(models: Dc<Models>, model: String, prompt: String) -> Result<String
 
 ### 5.4 Crates and features
 
-One crate, `svir`, with no procedural macros (D14). Without features: types and the codec.
+One crate, `svir`, with no procedural macros (D14). Without features: types and the codecs, every
+wire API among them; a wire API becomes a feature only when it brings dependencies (D56).
 `client` (default): `Client`, `EventStream`, the HTTP seam, and the hyper and tokio transport.
 `tls-ring` and `tls-aws-lc`: HTTPS through rustls with ring or with aws-lc-rs, neither on by
 default (D34). `schemars` (`Tools::add`), `tracing` (the `Trace` layer),

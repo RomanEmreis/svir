@@ -1,0 +1,21 @@
+{
+  "description": "A required call with no tools offered cannot be met (D40).",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "tool_choice": "required",
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "hi"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "error": "unsupported"
+  }
+}

@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+* **The Anthropic Messages API**: `Client::anthropic()`, for
+  `https://api.anthropic.com` or, with the new `ClientBuilder::base_url`, a
+  server with a Messages endpoint, and its codec,
+  `svir::anthropic::messages::{Encoder, Decoder}`, behind the same `Request`,
+  `Event`, and `Completion`. It speaks API version `2026-10-21` and sends the
+  key as a Bearer token (D50). An effort level is adaptive thinking, shown as
+  a summary, at that effort; `Effort::Minimal` has no level there (D52). A
+  request needs `max_tokens`, which the API requires (D53). The model listing
+  follows every page. Unknown event types are skipped in both modes, as the
+  API's versioning policy asks (D55).
+* **`Reasoning::signature`, and `ReasoningSource::Thinking` and
+  `ReasoningSource::RedactedThinking`**: a thinking block with the signature
+  the server needs back, and a redacted block with its encrypted data in
+  `signature`. Messages reasoning always goes back to the Messages API, and
+  never to Chat Completions (D54). Absent from the serde form when unset.
+* **`Completion::parts`**: the answer's text, reasoning, and calls in the
+  order they arrived, which `Message::from(Completion)` sends back as they
+  are, so the Messages API gets its thinking blocks back unchanged. Empty, and
+  absent from the serde form, for Chat Completions, whose order is always
+  reasoning, text, calls (D51).
 * **`image_tokens`** on `ClientBuilder` and `Encoder`: the most one image
   counts for when a request is measured against `context_tokens`. An image
   counts as its base64 length, but no more than this; 16384 by default, the
@@ -26,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `features = ["tls-ring"]`; a manifest that names `tls` renames it to
   `tls-ring`; `default-features = false, features = ["client", "tls-aws-lc"]`
   can become `features = ["tls-aws-lc"]` (D34).
+* **HTTP 529 is `ErrorKind::Transport`**, retryable, as 503 is: the
+  Messages API's overload. It was `Unsupported`.
+* **`anthropic-version` is a header svir writes**: `ClientBuilder::header`
+  refuses it, as it does `authorization` (D38).
+* **An error that says the `prompt is too long` is a context overflow**,
+  as the Messages API words one (D30).
 * **An image counts for 16384 tokens at most in context admission.** It
   counted as its base64 length, so a 3 MB photo was 4 million tokens, and
   `context_tokens` refused a request with one though it fit. Such a request

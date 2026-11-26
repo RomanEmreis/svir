@@ -1,6 +1,7 @@
 //! Shared by the conformance runners: reading cases and the suite's request notation.
 
-#![allow(dead_code, clippy::unwrap_used)]
+// `common.rs` would be built as a test of its own, so this one module is a `mod.rs`.
+#![allow(dead_code, clippy::unwrap_used, clippy::mod_module_files)]
 
 use std::path::{Path, PathBuf};
 
@@ -160,9 +161,9 @@ pub fn request(
                     }
                     built.with(file)
                 }
+                // The notation is the serde form of `Reasoning`.
                 "reasoning" => {
-                    let source = serde_json::from_value(value["source"].clone()).unwrap();
-                    built.with(Reasoning::new(source, text("text")))
+                    built.with(serde_json::from_value::<Reasoning>(value.clone()).unwrap())
                 }
                 "tool_call" => {
                     built.with(ToolCall::new(text("id"), text("name"), text("arguments")))

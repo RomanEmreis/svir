@@ -1,0 +1,79 @@
+{
+  "description": "Empty arguments are an empty input object.",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "hi"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "parts": [
+          {
+            "tool_call": {
+              "id": "toolu_1",
+              "name": "now",
+              "arguments": ""
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "parts": [
+          {
+            "tool_result": {
+              "call_id": "toolu_1",
+              "content": "noon"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "max_tokens": 16,
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "toolu_1",
+              "name": "now",
+              "input": {}
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_1",
+              "content": "noon"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

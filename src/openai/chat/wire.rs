@@ -1,11 +1,5 @@
 //! Names in the Chat Completions JSON that the adapter reads or writes in more than one place.
 
-// The error object a server reports, in an error response or inside the stream.
-pub(super) const ERROR: &str = "error";
-pub(super) const MESSAGE: &str = "message";
-pub(super) const CODE: &str = "code";
-pub(super) const TYPE: &str = "type";
-
 // A chunk of the stream, its choice, and the delta in it.
 pub(super) const ID: &str = "id";
 pub(super) const CHOICES: &str = "choices";

@@ -1,0 +1,13 @@
+//! Messages: `POST /v1/messages` with `stream: true`.
+//!
+//! [`Encoder`] turns a [`Request`](crate::Request) into a [`Body`] whose length is known before
+//! its first byte. [`Decoder`] reads the server's answer stream: bytes in,
+//! [`Event`](crate::Event)s out, no I/O.
+
+mod decoder;
+mod encoder;
+pub(crate) mod wire;
+
+pub use crate::body::Body;
+pub use decoder::Decoder;
+pub use encoder::Encoder;

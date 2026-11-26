@@ -1,0 +1,32 @@
+{
+  "description": "Arguments that are not a JSON object have no input to be: Unsupported.",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "hi"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "parts": [
+          {
+            "tool_call": {
+              "id": "toolu_1",
+              "name": "now",
+              "arguments": "[1]"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "error": "unsupported"
+  }
+}

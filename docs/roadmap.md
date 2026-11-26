@@ -13,7 +13,7 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
    cases pass in `tests/conformance_decoder.rs`.
 4. **Encoder.** Done: `svir::openai::chat::Encoder` and `Body`, with the exact length,
    attachments from memory and from disk, tools, tool calls and results, reasoning sent back, and
-   admission. All 44 encoder cases pass in `tests/conformance_encoder.rs`, at every block size
+   admission. All 45 encoder cases pass in `tests/conformance_encoder.rs`, at every block size
    and from memory.
 5. **Transport and compatibility.** Done: `Client` and its builder, `EventStream`, the HTTP seam
    with the hyper backend, authentication, status mapping, timeouts, cancellation, optional-field
@@ -36,6 +36,13 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
 9. **First consumer.** A chat backend moves over; its existing tests must pass unchanged. An agent
    engine follows when convenient.
 10. **`testing`.** The scripted server and scripted event streams, published for callers' tests.
+11. **Anthropic Messages.** Done in code: `Client::anthropic()` and `svir::anthropic::messages`,
+    with signed and redacted thinking, a completion that keeps its blocks in order, effort as
+    adaptive thinking, and the paged model listing (D50-D55, P18, P19). All 36 decoder, 30
+    encoder, and 10 transport cases in `tests/conformance/anthropic/` pass. Still to do: a live
+    run, against the hosted API and a local server with a Messages endpoint
+    (`SVIR_API=anthropic` in `tests/live.rs`), and recordings from it in place of the fixtures
+    written from the documentation.
 
 ## Conformance suite
 
@@ -44,12 +51,16 @@ written for all three components:
 
 - `decoder/`: 87 cases. Framing, reasoning and `<think>` splitting, refusals, tool-call assembly,
   usage, limits, errors inside the stream, and strict and lenient outcomes for each.
-- `encoder/`: 44 cases. Content layout, attachments at every size around the block size, exact
+- `encoder/`: 45 cases. Content layout, attachments at every size around the block size, exact
   length and repeatability, declared escaped lengths, reasoning and tool round trips, failed tool
   results, tool choice and response format, admission.
 - `transport/`: 59 cases. Authentication, the caller's headers, status mapping, the stream,
   timeouts, cancellation, base URLs, model listing, and compatibility learning, against a
   scripted loopback server.
+- `anthropic/`: the same three for the Messages API. 36 decoder cases on blocks, signed and
+  redacted thinking, tool calls, stop reasons, usage, and unknown events; 30 encoder cases on the
+  layout, thinking sent back, effort, tool choice, response format, and admission; 10 transport
+  cases on the version and key headers, status mapping, and the paged model listing.
 
 Cases that depend on an open decision name it in `open`. Not expressible as data:
 

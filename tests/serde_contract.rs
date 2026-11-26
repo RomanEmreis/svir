@@ -38,7 +38,12 @@ fn outcomes(dir: &Path) -> Vec<(String, Value)> {
 fn conformance_completions_are_the_serde_form_of_completion() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/conformance");
     let mut checked = 0;
-    for dir in ["decoder", "transport"] {
+    for dir in [
+        "decoder",
+        "transport",
+        "anthropic/decoder",
+        "anthropic/transport",
+    ] {
         for (name, outcome) in outcomes(&root.join(dir)) {
             let Some(expected) = outcome.get("completion") else {
                 continue;
@@ -66,7 +71,14 @@ fn conformance_completions_are_the_serde_form_of_completion() {
 fn conformance_error_kinds_are_the_serde_form_of_error_kind() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/conformance");
     let mut checked = 0;
-    for dir in ["decoder", "encoder", "transport"] {
+    for dir in [
+        "decoder",
+        "encoder",
+        "transport",
+        "anthropic/decoder",
+        "anthropic/encoder",
+        "anthropic/transport",
+    ] {
         for (name, outcome) in outcomes(&root.join(dir)) {
             let Some(kind) = outcome.get("error") else {
                 continue;
@@ -156,6 +168,50 @@ fn events_serialize_as_documented() {
             }}
         ])
     );
+}
+
+#[test]
+fn signed_reasoning_and_parts_serialize_as_documented() {
+    let thinking = Reasoning::new(ReasoningSource::Thinking, "plan").signature("sig");
+    let redacted = Reasoning::new(ReasoningSource::RedactedThinking, "").signature("enc");
+    let call = ToolCall::new("toolu_1", "now", "{}");
+
+    let mut done = Completion::new(FinishReason::ToolCalls);
+    done.text = "Checking.".into();
+    done.reasoning = vec![thinking.clone(), redacted.clone()];
+    done.calls = vec![call.clone()];
+    done.parts = vec![
+        Part::Reasoning(thinking),
+        Part::Reasoning(redacted),
+        Part::Text("Checking.".into()),
+        Part::ToolCall(call),
+    ];
+
+    let thinking = json!({"source": "thinking", "text": "plan", "signature": "sig"});
+    let redacted = json!({"source": "redacted_thinking", "text": "", "signature": "enc"});
+    let call = json!({"id": "toolu_1", "name": "now", "arguments": "{}"});
+    assert_eq!(
+        serde_json::to_value(&done).unwrap(),
+        json!({
+            "finish": "tool_calls",
+            "text": "Checking.",
+            "reasoning": [thinking, redacted],
+            "calls": [call],
+            "parts": [
+                {"reasoning": thinking},
+                {"reasoning": redacted},
+                {"text": "Checking."},
+                {"tool_call": call}
+            ]
+        })
+    );
+
+    // Reasoning and completions stored by 0.1 have neither field, and read as they were.
+    let stored: Reasoning =
+        serde_json::from_value(json!({"source": "reasoning", "text": "x"})).unwrap();
+    assert_eq!(stored, Reasoning::new(ReasoningSource::Reasoning, "x"));
+    let stored: Completion = serde_json::from_value(json!({"finish": "stop"})).unwrap();
+    assert!(stored.parts.is_empty());
 }
 
 #[test]

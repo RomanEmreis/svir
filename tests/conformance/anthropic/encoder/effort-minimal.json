@@ -1,0 +1,21 @@
+{
+  "description": "Minimal has no Messages level: Unsupported (D52).",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "reasoning_effort": "minimal",
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "hi"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "error": "unsupported"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "description": "Auto is the default and is not sent (D40).",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "tools": [
+      {
+        "name": "lookup",
+        "description": "Looks a city up.",
+        "input_schema": {
+          "type": "object"
+        }
+      }
+    ],
+    "tool_choice": "auto",
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "hi"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "max_tokens": 16,
+      "stream": true,
+      "tools": [
+        {
+          "name": "lookup",
+          "description": "Looks a city up.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

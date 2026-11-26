@@ -1,6 +1,10 @@
 //! How a response is read: strictness, limits, and inline `<think>` tags.
 
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
+
+use crate::{Error, ErrorKind, FinishReason, ToolCall, ToolCallDelta};
 
 /// How strictly a response is read.
 ///
@@ -74,6 +78,72 @@ impl Limits {
         self.tool_calls = calls;
         self
     }
+}
+
+/// A tool call as it arrived: its ID, name, and arguments, each empty if it never came.
+#[derive(Debug, Default)]
+pub(crate) struct PartialCall {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) arguments: String,
+}
+
+/// The calls of an answer that finished for `finish`, in order, checked: the finish they make,
+/// the calls to run, and the calls the output limit cut off. `refused` says the answer is a
+/// refusal, which calls may not join (D42).
+pub(crate) fn settle(
+    finish: FinishReason,
+    refused: bool,
+    partial: Vec<PartialCall>,
+) -> Result<(FinishReason, Vec<ToolCall>, Vec<ToolCallDelta>), Error> {
+    // The output limit may have cut any call short, even before its ID or name arrived: none
+    // is executable, and each is kept as far as it arrived (D47).
+    let cut = finish == FinishReason::Length;
+    let mut ids = HashSet::new();
+    let mut calls = Vec::with_capacity(partial.len());
+    let mut cut_calls = Vec::new();
+    for (index, call) in partial.into_iter().enumerate() {
+        if !cut && (call.id.is_empty() || call.name.is_empty()) {
+            return Err(protocol("a tool call has no ID or no name"));
+        }
+        if !call.id.is_empty() && !ids.insert(call.id.clone()) {
+            return Err(protocol("two tool calls share an ID"));
+        }
+
+        if cut {
+            let mut delta = ToolCallDelta::new(index, call.arguments);
+            delta.id = Some(call.id).filter(|id| !id.is_empty());
+            delta.name = Some(call.name).filter(|name| !name.is_empty());
+            cut_calls.push(delta);
+        } else {
+            calls.push(ToolCall::new(call.id, call.name, call.arguments));
+        }
+    }
+
+    if refused && !calls.is_empty() {
+        return Err(protocol("a refusal with tool calls"));
+    }
+
+    // An answer that is calls finishes with them, whatever the server said, as OpenAI and vLLM
+    // finish a call of a named function with stop (D45).
+    let finish = match finish {
+        FinishReason::Stop if !calls.is_empty() => FinishReason::ToolCalls,
+        finish => finish,
+    };
+    if finish != FinishReason::Length && (finish == FinishReason::ToolCalls) == calls.is_empty() {
+        return Err(protocol("the finish reason does not match the tool calls"));
+    }
+
+    Ok((finish, calls, cut_calls))
+}
+
+/// An answer with more tool calls than the limit allows.
+pub(crate) fn over_call_limit() -> Error {
+    Error::new(ErrorKind::ResponseLimit).with_detail("more tool calls than the tool-call limit")
+}
+
+fn protocol(detail: &'static str) -> Error {
+    Error::new(ErrorKind::Protocol).with_detail(detail)
 }
 
 #[cfg(test)]

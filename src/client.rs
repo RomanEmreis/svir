@@ -25,9 +25,15 @@ use serde_json::Value;
 
 use crate::{
     Completion, Error, ErrorKind, EventStream, Limits, Mode, RawStream, Request, Think,
+    anthropic::messages::{
+        self,
+        wire::{VERSION, VERSION_HEADER},
+    },
     http::{Backend, HttpBody, HttpRequest, HttpResponse, Hyper, Method},
     layer::{Erased, Layer, Next, Wrap},
-    openai::chat::{Decoder, Encoder, status},
+    openai::chat,
+    status,
+    stream::Decoding,
 };
 
 /// Connecting takes at most this long.
@@ -42,7 +48,7 @@ const ERROR_BODY_LIMIT: usize = 64 * 1024;
 /// The most of an API key file that is read.
 const KEY_FILE_LIMIT: u64 = 4096;
 /// Headers svir writes itself, or that frame the request, which a caller may not set (D38).
-const RESERVED_HEADERS: [HeaderName; 7] = [
+const RESERVED_HEADERS: [HeaderName; 8] = [
     AUTHORIZATION,
     CONTENT_TYPE,
     CONTENT_LENGTH,
@@ -50,7 +56,21 @@ const RESERVED_HEADERS: [HeaderName; 7] = [
     HOST,
     TRANSFER_ENCODING,
     CONNECTION,
+    HeaderName::from_static(VERSION_HEADER),
 ];
+/// The hosted Messages API (D50).
+const ANTHROPIC_URL: &str = "https://api.anthropic.com";
+/// The most models one page of the Messages API's listing holds.
+const MODEL_PAGE: u32 = 1000;
+
+/// The wire API a client speaks (D13).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Wire {
+    /// OpenAI-compatible Chat Completions.
+    Chat,
+    /// The Anthropic Messages API.
+    Messages,
+}
 
 /// A client for one model server.
 ///
@@ -83,7 +103,9 @@ pub struct Client<B = Hyper> {
 struct Inner<B> {
     http: B,
     /// Set once when the client is built, as everything here but `lean`.
-    chat_url: Box<str>,
+    wire: Wire,
+    /// Where answers are generated.
+    generate_url: Box<str>,
     models_url: Box<str>,
     authorization: Option<Secret>,
     /// The caller's headers, one value per name, every value marked sensitive: `Debug` shows
@@ -117,8 +139,32 @@ impl Client {
     /// A client for an OpenAI-compatible server at `url`, which may be written with or without
     /// `/v1`. Finish with [`build`](ClientBuilder::build).
     pub fn openai(url: impl Into<String>) -> ClientBuilder {
-        ClientBuilder {
-            url: url.into(),
+        ClientBuilder::new(Wire::Chat, url.into())
+    }
+
+    /// A client for the Anthropic Messages API at `https://api.anthropic.com`, or elsewhere with
+    /// [`base_url`](ClientBuilder::base_url) (D50). Finish with
+    /// [`build`](ClientBuilder::build). The hosted API needs HTTPS: a `tls-ring` or
+    /// `tls-aws-lc` feature.
+    ///
+    /// ```no_run
+    /// # use svir::prelude::*;
+    /// # fn build() -> Result<(), svir::Error> {
+    /// let client = Client::anthropic().api_key_env("ANTHROPIC_API_KEY").build()?;
+    /// let local = Client::anthropic().base_url("http://127.0.0.1:1234").build()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn anthropic() -> ClientBuilder {
+        ClientBuilder::new(Wire::Messages, ANTHROPIC_URL.to_owned())
+    }
+}
+
+impl ClientBuilder {
+    fn new(wire: Wire, url: String) -> Self {
+        Self {
+            wire,
+            url,
             key: Key::None,
             headers: Vec::new(),
             allow_http: false,
@@ -169,9 +215,18 @@ impl<B: Backend> Client<B> {
     async fn direct(&self, request: &Request) -> Result<EventStream<B>, Error> {
         let bytes = self.open(request).await?;
         let inner = &self.inner;
-        let decoder = Decoder::new(inner.mode)
-            .limits(inner.limits)
-            .think(inner.think);
+        let decoder = match inner.wire {
+            Wire::Chat => Decoding::Chat(
+                chat::Decoder::new(inner.mode)
+                    .limits(inner.limits)
+                    .think(inner.think),
+            ),
+            Wire::Messages => Decoding::Messages(
+                messages::Decoder::new(inner.mode)
+                    .limits(inner.limits)
+                    .think(inner.think),
+            ),
+        };
 
         Ok(EventStream::new(bytes, decoder))
     }
@@ -183,31 +238,67 @@ impl<B: Backend> Client<B> {
 
     /// Sends `request` and returns the server's bytes unchanged, after status mapping and
     /// compatibility handling: for a proxy that relays the stream and reads it on the way past
-    /// with a [`Decoder`]. Layers work on events, so they do not apply here.
+    /// with the decoder of the client's wire API, such as
+    /// [`openai::chat::Decoder`](crate::openai::chat::Decoder). Layers work on events, so they
+    /// do not apply here.
     pub async fn send(&self, request: impl Borrow<Request>) -> Result<RawStream<B>, Error> {
         self.open(request.borrow()).await
     }
 
-    /// Lists the models the server reports, unfiltered.
+    /// Lists the models the server reports, unfiltered: every page of them, from the Messages
+    /// API (D50).
     pub async fn list_models(&self) -> Result<Vec<Model>, Error> {
         let inner = &self.inner;
-        let request = self.request(Method::Get, inner.models_url.to_string(), None);
+        if inner.wire == Wire::Chat {
+            let listing = self.get_json(inner.models_url.to_string()).await?;
+            return data(&listing)?
+                .iter()
+                .map(|model| serde_json::from_value(model.clone()).map_err(|_| malformed()))
+                .collect();
+        }
+
+        let mut models = Vec::new();
+        let mut after: Option<String> = None;
+        loop {
+            let url = match &after {
+                None => inner.models_url.to_string(),
+                Some(id) => format!("{}&after_id={}", inner.models_url, query_value(id)),
+            };
+            let page = self.get_json(url).await?;
+            for model in data(&page)? {
+                let text = |key: &str| model.get(key).and_then(Value::as_str);
+                let id = text("id").ok_or_else(malformed)?;
+                models.push(Model {
+                    id: id.to_owned(),
+                    name: text("display_name").map(str::to_owned),
+                });
+            }
+
+            let more = page.get("has_more").and_then(Value::as_bool) == Some(true);
+            let last = page.get("last_id").and_then(Value::as_str);
+            match last {
+                // A page that does not move on would be asked for again and again.
+                Some(last) if more && after.as_deref() != Some(last) => {
+                    after = Some(last.to_owned());
+                }
+                None if more => return Err(malformed()),
+                _ => return Ok(models),
+            }
+        }
+    }
+
+    /// The JSON a GET of `url` answers with.
+    async fn get_json(&self, url: String) -> Result<Value, Error> {
+        let inner = &self.inner;
+        let request = self.request(Method::Get, url, None);
         let mut response = self.exchange(request).await?;
         if !(200..300).contains(&response.status) {
             return Err(self.rejected(&mut response).await);
         }
+
         let wait = inner.idle.unwrap_or(IDLE_TIMEOUT);
         let body = read_some(&mut response.body, inner.limits.wire_bytes, wait).await;
-        let malformed =
-            || Error::new(ErrorKind::Protocol).with_detail("the model listing is malformed");
-        let listing: Value = serde_json::from_slice(&body).map_err(|_| malformed())?;
-        let data = listing
-            .get("data")
-            .and_then(Value::as_array)
-            .ok_or_else(malformed)?;
-        data.iter()
-            .map(|model| serde_json::from_value(model.clone()).map_err(|_| malformed()))
-            .collect()
+        serde_json::from_slice(&body).map_err(|_| malformed())
     }
 
     /// Opens the answer stream, learning on the way whether the server takes optional fields.
@@ -226,6 +317,7 @@ impl<B: Backend> Client<B> {
         let optional = request.reasoning.is_some()
             || request.include_usage.unwrap_or(self.inner.include_usage);
         if self.inner.lean_retry
+            && self.inner.wire == Wire::Chat
             && !lean
             && optional
             && matches!(status, 400 | 422)
@@ -247,20 +339,36 @@ impl<B: Backend> Client<B> {
         lean: bool,
     ) -> Result<Result<RawStream<B>, (u16, Error)>, Error> {
         let inner = &self.inner;
-        let mut encoder = Encoder::new().lean(lean).include_usage(inner.include_usage);
-        if let Some(context) = inner.context {
-            encoder = encoder.context_tokens(context);
-        }
-        if let Some(tokens) = inner.image_tokens {
-            encoder = encoder.image_tokens(tokens);
-        }
-        let body = encoder.encode_files(request).await?;
+        let body = match inner.wire {
+            Wire::Chat => {
+                let mut encoder = chat::Encoder::new()
+                    .lean(lean)
+                    .include_usage(inner.include_usage);
+                if let Some(context) = inner.context {
+                    encoder = encoder.context_tokens(context);
+                }
+                if let Some(tokens) = inner.image_tokens {
+                    encoder = encoder.image_tokens(tokens);
+                }
+                encoder.encode_files(request).await?
+            }
+            Wire::Messages => {
+                let mut encoder = messages::Encoder::new();
+                if let Some(context) = inner.context {
+                    encoder = encoder.context_tokens(context);
+                }
+                if let Some(tokens) = inner.image_tokens {
+                    encoder = encoder.image_tokens(tokens);
+                }
+                encoder.encode_files(request).await?
+            }
+        };
         let body = HttpBody {
             length: body.len(),
             stream: body.into_stream(),
         };
 
-        let request = self.request(Method::Post, inner.chat_url.to_string(), Some(body));
+        let request = self.request(Method::Post, inner.generate_url.to_string(), Some(body));
         let mut response = self.exchange(request).await?;
         if !(200..300).contains(&response.status) {
             let status = response.status;
@@ -281,6 +389,9 @@ impl<B: Backend> Client<B> {
                 "application/json".to_owned(),
             ));
             headers.push((ACCEPT.as_str().to_owned(), status::EVENT_STREAM.to_owned()));
+        }
+        if self.inner.wire == Wire::Messages {
+            headers.push((VERSION_HEADER.to_owned(), VERSION.to_owned()));
         }
         if let Some(key) = &self.inner.authorization {
             headers.push((
@@ -333,7 +444,7 @@ impl<B: Backend> Client<B> {
 impl<B> fmt::Debug for Client<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Client")
-            .field("url", &self.inner.chat_url)
+            .field("url", &self.inner.generate_url)
             .field("api_key", &self.inner.authorization)
             .field("headers", &self.inner.headers)
             .field("mode", &self.inner.mode)
@@ -341,9 +452,10 @@ impl<B> fmt::Debug for Client<B> {
     }
 }
 
-/// Builds a [`Client`]. Created by [`Client::openai`].
+/// Builds a [`Client`]. Created by [`Client::openai`] or [`Client::anthropic`].
 #[must_use = "a builder does nothing until `build` is called"]
 pub struct ClientBuilder<B = Hyper> {
+    wire: Wire,
     url: String,
     key: Key,
     /// As given; validated by `build`.
@@ -420,6 +532,13 @@ impl<B> ClientBuilder<B> {
     /// ```
     pub fn header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
         self.headers.push((name.into(), value.into()));
+        self
+    }
+
+    /// Sets where the server is, with or without `/v1`: for the Messages API, a server other than
+    /// the hosted one, such as a local server with a Messages endpoint.
+    pub fn base_url(mut self, url: impl Into<String>) -> Self {
+        self.url = url.into();
         self
     }
 
@@ -521,6 +640,7 @@ impl<B> ClientBuilder<B> {
         };
 
         ClientBuilder {
+            wire: self.wire,
             url: self.url,
             key: self.key,
             headers: self.headers,
@@ -559,8 +679,17 @@ impl<B> ClientBuilder<B> {
         Ok(Client {
             inner: Arc::new(Inner {
                 http,
-                chat_url: format!("{base}/v1/chat/completions").into_boxed_str(),
-                models_url: format!("{base}/v1/models").into_boxed_str(),
+                wire: self.wire,
+                generate_url: match self.wire {
+                    Wire::Chat => format!("{base}/v1/chat/completions"),
+                    Wire::Messages => format!("{base}/v1/messages"),
+                }
+                .into_boxed_str(),
+                models_url: match self.wire {
+                    Wire::Chat => format!("{base}/v1/models"),
+                    Wire::Messages => format!("{base}/v1/models?limit={MODEL_PAGE}"),
+                }
+                .into_boxed_str(),
                 authorization,
                 headers,
                 layers: self.layers.into_boxed_slice(),
@@ -704,6 +833,32 @@ pub struct Model {
     pub name: Option<String>,
 }
 
+fn malformed() -> Error {
+    Error::new(ErrorKind::Protocol).with_detail("the model listing is malformed")
+}
+
+/// The models of a listing.
+fn data(listing: &Value) -> Result<&Vec<Value>, Error> {
+    listing
+        .get("data")
+        .and_then(Value::as_array)
+        .ok_or_else(malformed)
+}
+
+/// `value` as it may stand in a query: unreserved characters as they are, every other byte
+/// percent-encoded.
+fn query_value(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
 /// Reads up to `limit` bytes of a body for at most `wait`, keeping what arrived.
 async fn read_some<S>(body: &mut S, limit: usize, wait: Duration) -> Vec<u8>
 where
@@ -796,6 +951,39 @@ mod tests {
             base_url("http://localhost:8080/openai/v1", false).unwrap(),
             "http://localhost:8080/openai"
         );
+    }
+
+    #[test]
+    fn the_messages_api_is_hosted_unless_told_otherwise() {
+        let hosted = Client::anthropic().build();
+        if cfg!(any(feature = "tls-ring", feature = "tls-aws-lc")) {
+            let client = hosted.unwrap();
+            assert_eq!(
+                &*client.inner.generate_url,
+                "https://api.anthropic.com/v1/messages"
+            );
+            assert_eq!(
+                &*client.inner.models_url,
+                "https://api.anthropic.com/v1/models?limit=1000"
+            );
+        } else {
+            assert_eq!(hosted.unwrap_err().kind(), ErrorKind::Config);
+        }
+
+        let local = Client::anthropic()
+            .base_url("http://127.0.0.1:1234/v1")
+            .build()
+            .unwrap();
+        assert_eq!(
+            &*local.inner.generate_url,
+            "http://127.0.0.1:1234/v1/messages"
+        );
+    }
+
+    #[test]
+    fn a_model_id_is_escaped_in_the_query() {
+        assert_eq!(query_value("claude-opus-5-5"), "claude-opus-5-5");
+        assert_eq!(query_value("a b&c"), "a%20b%26c");
     }
 
     #[test]

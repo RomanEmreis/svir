@@ -6,7 +6,8 @@
 //! - `SVIR_URL`: the server, `http://127.0.0.1:1234` unless set
 //! - `SVIR_MODEL`: the model; `cargo run --example models` lists what the server has
 
-#![allow(dead_code)]
+// `common.rs` would be built as an example of its own, so this one module is a `mod.rs`.
+#![allow(dead_code, clippy::mod_module_files)]
 
 /// The server to talk to.
 pub fn url() -> String {

@@ -1,5 +1,6 @@
-//! Runs the encoder cases of the conformance suite: `tests/conformance/encoder/*.json`, in the
-//! format described in `tests/conformance/README.md`.
+//! Runs the encoder cases of the conformance suite: `tests/conformance/encoder/*.json` for Chat
+//! Completions and `tests/conformance/anthropic/encoder/*.json` for Messages, in the format
+//! described in `tests/conformance/README.md`.
 
 #![cfg(feature = "client")]
 #![allow(clippy::unwrap_used)]
@@ -11,8 +12,66 @@ use std::path::Path;
 use common::Attachments;
 use futures_util::StreamExt;
 use serde_json::Value;
-use svir::openai::chat::{Body, Encoder};
-use svir::{ErrorKind, Request};
+use svir::body::Body;
+use svir::{Error, ErrorKind, Request, anthropic, openai};
+
+/// An encoder of one wire API, as the runner drives it.
+trait Encode: Sized {
+    fn build(options: &Value) -> Self;
+    fn block_bytes(self, bytes: usize) -> Self;
+    fn encode(&self, request: &Request) -> Result<Body, Error>;
+    async fn encode_files(&self, request: &Request) -> Result<Body, Error>;
+}
+
+impl Encode for openai::chat::Encoder {
+    fn build(options: &Value) -> Self {
+        let mut encoder = Self::new().lean(options["lean"].as_bool().unwrap_or(false));
+        if let Some(tokens) = options["context_tokens"].as_u64() {
+            encoder = encoder.context_tokens(tokens);
+        }
+        if let Some(tokens) = options["image_tokens"].as_u64() {
+            encoder = encoder.image_tokens(tokens);
+        }
+        encoder
+    }
+
+    fn block_bytes(self, bytes: usize) -> Self {
+        Self::block_bytes(self, bytes)
+    }
+
+    fn encode(&self, request: &Request) -> Result<Body, Error> {
+        Self::encode(self, request)
+    }
+
+    async fn encode_files(&self, request: &Request) -> Result<Body, Error> {
+        Self::encode_files(self, request).await
+    }
+}
+
+impl Encode for anthropic::messages::Encoder {
+    fn build(options: &Value) -> Self {
+        let mut encoder = Self::new();
+        if let Some(tokens) = options["context_tokens"].as_u64() {
+            encoder = encoder.context_tokens(tokens);
+        }
+        if let Some(tokens) = options["image_tokens"].as_u64() {
+            encoder = encoder.image_tokens(tokens);
+        }
+        encoder
+    }
+
+    fn block_bytes(self, bytes: usize) -> Self {
+        Self::block_bytes(self, bytes)
+    }
+
+    fn encode(&self, request: &Request) -> Result<Body, Error> {
+        Self::encode(self, request)
+    }
+
+    async fn encode_files(&self, request: &Request) -> Result<Body, Error> {
+        Self::encode_files(self, request).await
+    }
+}
 
 fn request(case: &Value, place: &Attachments<'_>) -> Request {
     let send_reasoning = case["options"]["send_reasoning"].as_bool();
@@ -24,19 +83,12 @@ fn request(case: &Value, place: &Attachments<'_>) -> Request {
     )
 }
 
-fn encoder(case: &Value, block: Option<usize>) -> Encoder {
-    let options = &case["options"];
-    let mut encoder = Encoder::new().lean(options["lean"].as_bool().unwrap_or(false));
-    if let Some(bytes) = block {
-        encoder = encoder.block_bytes(bytes);
+fn encoder<E: Encode>(case: &Value, block: Option<usize>) -> E {
+    let encoder = E::build(&case["options"]);
+    match block {
+        Some(bytes) => encoder.block_bytes(bytes),
+        None => encoder,
     }
-    if let Some(tokens) = options["context_tokens"].as_u64() {
-        encoder = encoder.context_tokens(tokens);
-    }
-    if let Some(tokens) = options["image_tokens"].as_u64() {
-        encoder = encoder.image_tokens(tokens);
-    }
-    encoder
 }
 
 /// Writes the attachments as files. One with a `declared_size` is written at that size, so the
@@ -89,9 +141,22 @@ fn compare(expect: &Value, got: &Result<(u64, Vec<u8>), ErrorKind>) -> Vec<Strin
 
 #[tokio::test]
 async fn encoder_conformance() {
-    let (_, cases) = common::cases("encoder");
-    let scratch =
-        std::env::temp_dir().join(format!("svir-conformance-encoder-{}", std::process::id()));
+    conformance::<openai::chat::Encoder>("encoder", 40).await;
+}
+
+#[tokio::test]
+async fn messages_encoder_conformance() {
+    conformance::<anthropic::messages::Encoder>("anthropic/encoder", 30).await;
+}
+
+/// Runs the cases of `directory`, which must make more than `least` runs.
+async fn conformance<E: Encode>(directory: &str, least: usize) {
+    let (_, cases) = common::cases(directory);
+    let scratch = std::env::temp_dir().join(format!(
+        "svir-conformance-{}-{}",
+        directory.replace('/', "-"),
+        std::process::id()
+    ));
     let (mut failures, mut pending, mut runs) = (Vec::new(), Vec::new(), 0);
 
     for (name, case) in &cases {
@@ -124,7 +189,7 @@ async fn encoder_conformance() {
         for block in blocks {
             runs += 1;
             let label = format!("files/{block:?}");
-            let encoder = encoder(case, block);
+            let encoder = encoder::<E>(case, block);
             let request = request(case, &Attachments::Files(&dir));
 
             write(case, &dir, false);
@@ -154,7 +219,7 @@ async fn encoder_conformance() {
         if !changes {
             runs += 1;
             let request = request(case, &Attachments::Memory);
-            let got = match encoder(case, None).encode(&request) {
+            let got = match encoder::<E>(case, None).encode(&request) {
                 Ok(body) => {
                     let length = body.len();
                     body.into_bytes()
@@ -171,7 +236,7 @@ async fn encoder_conformance() {
     for line in &pending {
         eprintln!("pending: {line}");
     }
-    assert!(runs > 40, "only {runs} runs");
+    assert!(runs > least, "only {runs} runs");
     assert!(
         failures.is_empty(),
         "{} failures:\n{}",

@@ -1,0 +1,76 @@
+{
+  "description": "Text, an image, and a text file go as blocks in the order given; the file is wrapped as in P12.",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "Compare:"
+          },
+          {
+            "image": "pixel"
+          },
+          {
+            "file": "notes"
+          },
+          {
+            "text": "Thanks."
+          }
+        ]
+      }
+    ]
+  },
+  "attachments": {
+    "pixel": {
+      "media_type": "image/png",
+      "hex": "89504e470d0a1a0a"
+    },
+    "notes": {
+      "name": "notes.txt",
+      "text": "hello"
+    }
+  },
+  "options": {
+    "block_bytes": [
+      3,
+      6
+    ]
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "max_tokens": 16,
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Compare:"
+            },
+            {
+              "type": "image",
+              "source": {
+                "type": "base64",
+                "media_type": "image/png",
+                "data": "iVBORw0KGgo="
+              }
+            },
+            {
+              "type": "text",
+              "text": "<file name=\"notes.txt\">\nhello\n</file>"
+            },
+            {
+              "type": "text",
+              "text": "Thanks."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

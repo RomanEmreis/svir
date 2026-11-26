@@ -1,0 +1,49 @@
+{
+  "description": "A gateway that reads x-api-key gets the key as a header of the caller's (D50).",
+  "config": {
+    "base_url": "{server}",
+    "headers": {
+      "x-api-key": "secret-key"
+    }
+  },
+  "server": [
+    {
+      "status": 200,
+      "headers": {
+        "content-type": "text/event-stream"
+      },
+      "body_file": "../decoder/text.sse"
+    }
+  ],
+  "calls": [
+    {
+      "expect": {
+        "completion": {
+          "finish": "stop",
+          "text": "Rivers meander.",
+          "parts": [
+            {
+              "text": "Rivers meander."
+            }
+          ],
+          "usage": {
+            "input": 25,
+            "output": 12
+          }
+        }
+      }
+    }
+  ],
+  "expect_requests": [
+    {
+      "method": "POST",
+      "path": "/v1/messages",
+      "headers": {
+        "x-api-key": "secret-key"
+      },
+      "absent_headers": [
+        "authorization"
+      ]
+    }
+  ]
+}

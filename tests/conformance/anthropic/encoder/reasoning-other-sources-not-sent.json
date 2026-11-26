@@ -1,0 +1,84 @@
+{
+  "description": "Reasoning from other carriers never goes to the Messages API: it carries no signature (D54).",
+  "request": {
+    "model": "m",
+    "max_tokens": 16,
+    "messages": [
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "hi"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "parts": [
+          {
+            "reasoning": {
+              "source": "reasoning_content",
+              "text": "chat"
+            }
+          },
+          {
+            "reasoning": {
+              "source": "think",
+              "text": "inline"
+            }
+          },
+          {
+            "text": "Ok."
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "parts": [
+          {
+            "text": "And?"
+          }
+        ]
+      }
+    ]
+  },
+  "options": {
+    "send_reasoning": true
+  },
+  "expect": {
+    "body": {
+      "model": "m",
+      "max_tokens": 16,
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "hi"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Ok."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "And?"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -65,7 +65,9 @@ Dry and to the point:
 - Open questions (`O<n>`) are settled in an issue before the code that depends on them.
 - A change to behavior that `docs/` describes updates `docs/` in the same PR.
 - What a server was observed to do goes into
-  [docs/wire-protocol.md](docs/wire-protocol.md), as a fact, with the server named.
+  [docs/wire-protocol.md](docs/wire-protocol.md), or for the Messages API
+  [docs/wire-protocol-anthropic.md](docs/wire-protocol-anthropic.md), as a fact, with the
+  server named.
 
 ### Tests
 
@@ -105,6 +107,9 @@ SVIR_MODEL=<model> cargo test --test live -- --ignored --test-threads=1
 - Every public item is documented. Every public data type is `#[non_exhaustive]` and
   serializable.
 - No `unsafe`, and no `unwrap()` outside tests.
+- A module with submodules is `name.rs` next to a `name/` directory, never `name/mod.rs`;
+  Clippy's `mod_module_files` holds to it. `tests/common/` and `examples/common/` are the
+  exception: Cargo would build a `common.rs` there as a test or an example of its own.
 - Inside a function, a blank line separates logical steps.
 - A literal that means the same thing in two places or more is one named constant (a
   header name, a wire key, an error detail); an error built twice is one function. Header
