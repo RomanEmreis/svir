@@ -165,6 +165,15 @@ A response may carry `x-should-retry: true` or `false`.
 
 ## 6. Observed servers
 
+### 6.0 The hosted API
+
+Run on 2026-11-27 against `https://api.anthropic.com` with `claude-haiku-5-5`, through
+`tests/live.rs` with `SVIR_API=anthropic`: all 13 tests pass. It takes the key as
+`Authorization: Bearer` with `anthropic-version: 2026-10-21`; adaptive thinking with a summarized
+display and an effort level; thinking turned off with an output format; a required tool by name;
+an image and a text file; and, in a tool loop, the signed thinking blocks of the answer sent back
+with its text and calls in the order they came.
+
 ### 6.1 LM Studio
 
 Observed on 2026-11-26 at `/v1/messages`, serving `thinkingmachines/inkling-2-mini` and

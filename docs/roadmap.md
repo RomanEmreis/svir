@@ -44,7 +44,8 @@ Order of work for the first release. Each step is reviewable on its own. Decisio
     with thinking sent back included; the two that fail ask for a named tool and a schema,
     which LM Studio's Messages endpoint ignores. With inkling-2-mini, 10 of 13, as LM Studio
     does not parse that model's format (wire-protocol-anthropic 6.1). Two answers are recorded
-    as fixtures. Still to do: the hosted API.
+    as fixtures. Against the hosted API with Haiku 5.5, all 13 pass (wire-protocol-anthropic
+    6.0).
 
 ## Conformance suite
 
