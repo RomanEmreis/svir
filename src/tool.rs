@@ -141,8 +141,8 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "schemars")]
     #[test]
+    #[cfg(feature = "schemars")]
     fn only_an_object_root_gets_properties() {
         assert_eq!(schema_of::<String>(), json!({"type": "string"}));
     }

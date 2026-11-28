@@ -301,8 +301,8 @@ mod tests {
         assert_eq!(schema.get("title"), None);
     }
 
-    #[cfg(feature = "schemars")]
     #[test]
+    #[cfg(feature = "schemars")]
     fn a_schema_derived_from_an_empty_struct_has_properties() {
         /// The arguments of a tool that takes none.
         #[derive(Deserialize, schemars::JsonSchema)]
