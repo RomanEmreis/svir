@@ -557,7 +557,9 @@ svir has no tool macro (D18). A tool set is anything implementing `Toolbox`: it 
 to the model (`Request::tools(&toolbox)`) and answers one call at a time (`toolbox.call(&call)`).
 
 - **`Tools`**, in svir, is a plain registry. `Tools::new().add(name, description, handler)` derives
-  the schema from the type of the handler's arguments (feature `schemars`);
+  the schema from the type of the handler's arguments (feature `schemars`), with `properties` on
+  an object root even for a type with no fields, which LM Studio requires (see
+  [wire-protocol.md](wire-protocol.md#24-tools));
   `.add_tool(tool, handler)` takes a `Tool` with its own schema. The handler's arguments are
   deserialized with serde, which is the validation: arguments that do not fit never reach it. A
   failure becomes a tool result for the model, `ToolResult::error(..)`, flagged so that each wire

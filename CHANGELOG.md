@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.2.1
+
+### Fixed
+
+* **A tool whose arguments are an empty struct reaches LM Studio.**
+  `Tools::add` derived `{"type": "object"}` for it, with no `properties`,
+  which LM Studio rejects with 400, so the request failed with
+  `ErrorKind::Unsupported`. A schema derived from a type now has `properties`
+  whenever its root is an object, empty if need be, as `Tool::new` does; the
+  same holds for `Schema::of`. A schema set with `Tool::schema` is sent as
+  given.
+
 ## 0.2.0
 
 ### Added

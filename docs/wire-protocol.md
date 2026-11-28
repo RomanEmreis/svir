@@ -94,6 +94,15 @@ LM Studio takes the strings only. A named function is rejected with 400 and
 `required` is accepted and not kept: asked to say hello with a tool required, the model said
 hello, finished with `stop`, and called nothing.
 
+LM Studio also requires `properties` in `parameters`. Observed on 2026-11-27 serving
+`qwen/qwen3.8-27b`: a tool whose `parameters` is `{"type": "object"}` and a description is
+rejected with 400 and a list of validation errors as the `error` string, one with
+`"code": "invalid_type"`, `"path": [0, "function", "parameters", "properties"]`, and
+`"message": "Required"`. With `"properties": {}` added, the same request is answered. JSON Schema
+reads the two forms alike, so a schema svir derives from a type has `properties` whenever its root
+is an object, empty for a type with no fields, as `Tool::new` has; schemars writes none for an
+empty struct. A schema the caller sets with `Tool::schema` is sent as given.
+
 mlx-lm reads no `tool_choice`. Any value is accepted with 200 and changes nothing, even one the
 protocol does not have (`"bogus"`): with `none`, asked to open a locker, the model called the
 locker tool; with a named function, asked to say hello, it said hello.
