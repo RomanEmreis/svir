@@ -34,12 +34,20 @@ impl Tool {
 
 /// The JSON Schema of `T`, without what describes the schema itself, which is of no use to a
 /// model.
+///
+/// An object at the root always has `properties`, empty for a type with no fields, as
+/// [`Tool::new`] has: schemars writes none for an empty struct, and LM Studio refuses a tool
+/// whose parameters lack them. The two forms mean the same.
 #[cfg(feature = "schemars")]
 pub(crate) fn schema_of<T: schemars::JsonSchema>() -> Value {
     let mut schema = schemars::schema_for!(T).to_value();
     if let Some(schema) = schema.as_object_mut() {
         schema.remove("$schema");
         schema.remove("title");
+
+        if schema.get("type").is_some_and(|kind| kind == "object") {
+            schema.entry("properties").or_insert_with(|| json!({}));
+        }
     }
 
     schema
@@ -131,5 +139,11 @@ mod tests {
             tool.input_schema,
             json!({"type": "object", "properties": {}})
         );
+    }
+
+    #[test]
+    #[cfg(feature = "schemars")]
+    fn only_an_object_root_gets_properties() {
+        assert_eq!(schema_of::<String>(), json!({"type": "string"}));
     }
 }

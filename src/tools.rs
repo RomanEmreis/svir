@@ -300,4 +300,23 @@ mod tests {
         assert_eq!(schema.get("$schema"), None);
         assert_eq!(schema.get("title"), None);
     }
+
+    #[test]
+    #[cfg(feature = "schemars")]
+    fn a_schema_derived_from_an_empty_struct_has_properties() {
+        /// The arguments of a tool that takes none.
+        #[derive(Deserialize, schemars::JsonSchema)]
+        struct Nothing {}
+
+        let tools = Tools::new().add("run_tests", "Run the tests.", |_: Nothing| async { "ok" });
+
+        assert_eq!(
+            tools.tools()[0].input_schema,
+            json!({
+                "description": "The arguments of a tool that takes none.",
+                "type": "object",
+                "properties": {}
+            })
+        );
+    }
 }
